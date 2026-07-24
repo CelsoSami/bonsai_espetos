@@ -1,13 +1,23 @@
 -- ============================================
 -- BONSAI ESPETOS - Setup do Banco no Supabase
 -- Execute no SQL Editor do Supabase
+-- IMPORTANTE: Execute este script NOVAMENTE
 -- ============================================
 
--- Tabela de Usuarios (espelha auth.users)
+-- Remover tabelas antigas se existirem (cuidado em producao!)
+DROP TABLE IF EXISTS stock_history CASCADE;
+DROP TABLE IF EXISTS cashflow CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS tables CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+-- Tabela de Usuarios (independente do auth.users)
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
     phone TEXT DEFAULT '',
     approved BOOLEAN DEFAULT FALSE,
     is_master BOOLEAN DEFAULT FALSE,
@@ -48,7 +58,7 @@ CREATE TABLE IF NOT EXISTS orders (
     items JSONB DEFAULT '[]',
     total NUMERIC(10,2) DEFAULT 0,
     status TEXT DEFAULT 'pending',
-    user_id UUID REFERENCES users(id),
+    user_id TEXT,
     user_name TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -60,7 +70,7 @@ CREATE TABLE IF NOT EXISTS cashflow (
     description TEXT NOT NULL,
     amount NUMERIC(10,2) NOT NULL,
     category TEXT DEFAULT '',
-    user_id UUID REFERENCES users(id),
+    user_id TEXT,
     user_name TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -74,7 +84,7 @@ CREATE TABLE IF NOT EXISTS stock_history (
     new_stock INTEGER DEFAULT 0,
     adjustment INTEGER DEFAULT 0,
     reason TEXT DEFAULT '',
-    user_id UUID REFERENCES users(id),
+    user_id TEXT,
     user_name TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -90,8 +100,7 @@ ALTER TABLE cashflow ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_history ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
--- Politicas de acesso (permite tudo para todos)
--- Ajuste conforme necessidade de seguranca
+-- Politicas de acesso (permite tudo)
 -- ============================================
 CREATE POLICY "allow_all_users" ON users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_products" ON products FOR ALL USING (true) WITH CHECK (true);
@@ -101,23 +110,17 @@ CREATE POLICY "allow_all_cashflow" ON cashflow FOR ALL USING (true) WITH CHECK (
 CREATE POLICY "allow_all_stock_history" ON stock_history FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================
--- Inserir mesas padrao (ajuste conforme necessario)
+-- Mesas padrao
 -- ============================================
 INSERT INTO tables (number, capacity, status) VALUES
-(1, 4, 'available'),
-(2, 4, 'available'),
-(3, 6, 'available'),
-(4, 2, 'available'),
-(5, 8, 'available'),
-(6, 4, 'available'),
-(7, 4, 'available'),
-(8, 6, 'available'),
-(9, 2, 'available'),
+(1, 4, 'available'), (2, 4, 'available'), (3, 6, 'available'),
+(4, 2, 'available'), (5, 8, 'available'), (6, 4, 'available'),
+(7, 4, 'available'), (8, 6, 'available'), (9, 2, 'available'),
 (10, 10, 'available')
 ON CONFLICT (number) DO NOTHING;
 
 -- ============================================
--- Inserir produtos de exemplo
+-- Produtos de exemplo
 -- ============================================
 INSERT INTO products (name, description, price, cost, stock, category, type, unit, min_stock) VALUES
 ('Espeto de Frango', 'Frango temperado com ervas', 18.90, 8.50, 50, 'Espetos', 'Frango', 'un', 10),
