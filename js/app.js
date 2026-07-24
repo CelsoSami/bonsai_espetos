@@ -15,15 +15,23 @@ let orderStatusChart = null;
 
 // ========== INICIALIZACAO ==========
 document.addEventListener('DOMContentLoaded', async () => {
-    const saved = localStorage.getItem('bonsai_user');
-    if (saved) {
-        currentUser = saved;
-        const { data } = await sb.from('users').select('*').eq('id', saved).single();
-        if (data && data.approved) {
-            userProfile = data;
-            showDashboard();
-            return;
+    try {
+        const saved = localStorage.getItem('bonsai_user');
+        if (saved) {
+            currentUser = saved;
+            const { data, error } = await sb.from('users').select('*').eq('id', saved).single();
+            if (!error && data && data.approved) {
+                userProfile = data;
+                showDashboard();
+                return;
+            }
+            localStorage.removeItem('bonsai_user');
+            currentUser = null;
         }
+    } catch (err) {
+        console.error('Auto-login failed:', err);
+        localStorage.removeItem('bonsai_user');
+        currentUser = null;
     }
     setupForms();
 });
@@ -57,8 +65,10 @@ function showAuthTab(tab) {
 
 async function doLogin(email, password) {
     try {
+        console.log('Tentando login com:', email);
         const { data: users, error } = await sb.from('users').select('*').eq('email', email);
-        if (error) { showToast('Erro ao buscar usuario', 'error'); return; }
+        console.log('Resultado query:', { users, error });
+        if (error) { showToast('Erro ao buscar usuario: ' + error.message, 'error'); return; }
         if (!users || users.length === 0) { showToast('Email ou senha invalidos', 'error'); return; }
         const user = users[0];
         if (user.password !== password) { showToast('Email ou senha invalidos', 'error'); return; }
@@ -68,6 +78,7 @@ async function doLogin(email, password) {
         localStorage.setItem('bonsai_user', user.id);
         showDashboard();
     } catch (err) {
+        console.error('Erro login:', err);
         showToast('Erro de conexao: ' + err.message, 'error');
     }
 }
