@@ -15,10 +15,15 @@ let orderStatusChart = null;
 
 // ========== INICIALIZACAO ==========
 document.addEventListener('DOMContentLoaded', async () => {
-    const { data: { session } } = await sb.auth.getSession();
-    if (session) {
-        await loadUserProfile(session.user.id);
-        showDashboard();
+    const saved = localStorage.getItem('bonsai_user');
+    if (saved) {
+        currentUser = saved;
+        const { data } = await sb.from('users').select('*').eq('id', saved).single();
+        if (data && data.approved) {
+            userProfile = data;
+            showDashboard();
+            return;
+        }
     }
     setupForms();
 });
@@ -52,15 +57,18 @@ function showAuthTab(tab) {
 
 async function doLogin(email, password) {
     try {
-        const { data, error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) {
-            showToast(error.message || 'Erro ao fazer login', 'error');
-            return;
-        }
-        await loadUserProfile(data.user.id);
+        const { data: users, error } = await sb.from('users').select('*').eq('email', email);
+        if (error) { showToast('Erro ao buscar usuario', 'error'); return; }
+        if (!users || users.length === 0) { showToast('Email ou senha invalidos', 'error'); return; }
+        const user = users[0];
+        if (user.password !== password) { showToast('Email ou senha invalidos', 'error'); return; }
+        if (!user.approved) { showToast('Cadastro pendente de aprovacao', 'error'); return; }
+        currentUser = user.id;
+        userProfile = user;
+        localStorage.setItem('bonsai_user', user.id);
         showDashboard();
     } catch (err) {
-        showToast('Erro de conexao', 'error');
+        showToast('Erro de conexao: ' + err.message, 'error');
     }
 }
 
@@ -71,71 +79,39 @@ async function doRegister() {
     const password = document.getElementById('regPassword').value;
 
     try {
-        const { data: existing } = await sb
-            .from('users').select('id').eq('email', email).maybeSingle();
+        const { data: existing } = await sb.from('users').select('id').eq('email', email).maybeSingle();
+        if (existing) { showToast('Email ja cadastrado', 'error'); return; }
 
-        if (existing) {
-            showToast('Email ja cadastrado', 'error');
-            return;
-        }
-
-        const { data: authData, error: authError } = await sb.auth.signUp({
-            email,
-            password,
-            options: { data: { name, phone } }
-        });
-
-        if (authError) {
-            showToast(authError.message, 'error');
-            return;
-        }
-
-        await sb.from('users').insert({
-            id: authData.user.id,
+        const newUser = {
+            id: crypto.randomUUID(),
             name,
             email,
+            password,
             phone,
-            approved: false,
+            approved: email === MASTER_EMAIL,
             is_master: email === MASTER_EMAIL,
             is_manager: false
-        });
+        };
+
+        const { error } = await sb.from('users').insert(newUser);
+        if (error) { showToast('Erro ao cadastrar: ' + error.message, 'error'); return; }
 
         if (email === MASTER_EMAIL) {
-            await sb.from('users').update({ approved: true }).eq('id', authData.user.id);
+            currentUser = newUser.id;
+            userProfile = newUser;
+            localStorage.setItem('bonsai_user', newUser.id);
+            showDashboard();
+        } else {
+            showToast('Cadastro realizado! Aguarde aprovacao do administrador.');
+            showAuthTab('login');
         }
-
-        showToast('Cadastro realizado! Aguarde aprovacao do administrador.');
-        showAuthTab('login');
     } catch (err) {
         showToast('Erro ao cadastrar: ' + err.message, 'error');
     }
 }
 
-async function loadUserProfile(userId) {
-    const { data } = await sb.from('users').select('*').eq('id', userId).single();
-    userProfile = data;
-    currentUser = userId;
-
-    if (userProfile && !userProfile.approved && userProfile.email !== MASTER_EMAIL) {
-        showToast('Seu cadastro ainda nao foi aprovado', 'error');
-        await sb.auth.signOut();
-        return;
-    }
-
-    if (userProfile) {
-        document.getElementById('userName').textContent = userProfile.name;
-        document.getElementById('userAvatar').textContent = userProfile.name.charAt(0).toUpperCase();
-        const role = userProfile.is_master ? 'Master' : userProfile.is_manager ? 'Gerente' : 'Garcom';
-        document.getElementById('userRole').textContent = role;
-
-        if (userProfile.is_master || userProfile.is_manager) {
-            document.querySelectorAll('.manager-section').forEach(el => el.style.display = '');
-        }
-    }
-}
-
 async function logout() {
-    await sb.auth.signOut();
+    localStorage.removeItem('bonsai_user');
     currentUser = null;
     userProfile = null;
     document.getElementById('page-dashboard').classList.remove('active');
