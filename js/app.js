@@ -65,9 +65,7 @@ function showAuthTab(tab) {
 
 async function doLogin(email, password) {
     try {
-        console.log('Tentando login com:', email);
         const { data: users, error } = await sb.from('users').select('*').eq('email', email);
-        console.log('Resultado query:', { users, error });
         if (error) { showToast('Erro ao buscar usuario: ' + error.message, 'error'); return; }
         if (!users || users.length === 0) { showToast('Email ou senha invalidos', 'error'); return; }
         const user = users[0];
@@ -78,7 +76,6 @@ async function doLogin(email, password) {
         localStorage.setItem('bonsai_user', user.id);
         showDashboard();
     } catch (err) {
-        console.error('Erro login:', err);
         showToast('Erro de conexao: ' + err.message, 'error');
     }
 }
@@ -99,15 +96,15 @@ async function doRegister() {
             email,
             password,
             phone,
-            approved: email === MASTER_EMAIL,
-            is_master: email === MASTER_EMAIL,
+            approved: MASTER_EMAILS.includes(email),
+            is_master: MASTER_EMAILS.includes(email),
             is_manager: false
         };
 
         const { error } = await sb.from('users').insert(newUser);
         if (error) { showToast('Erro ao cadastrar: ' + error.message, 'error'); return; }
 
-        if (email === MASTER_EMAIL) {
+        if (MASTER_EMAILS.includes(email)) {
             currentUser = newUser.id;
             userProfile = newUser;
             localStorage.setItem('bonsai_user', newUser.id);
@@ -132,7 +129,23 @@ async function logout() {
 function showDashboard() {
     document.getElementById('page-auth').classList.remove('active');
     document.getElementById('page-dashboard').classList.add('active');
+    updateUserUI();
+    updateManagerSections();
     loadDashboard();
+}
+
+function updateUserUI() {
+    if (!userProfile) return;
+    document.getElementById('userAvatar').textContent = (userProfile.name || 'U')[0].toUpperCase();
+    document.getElementById('userName').textContent = userProfile.name || 'Usuario';
+    document.getElementById('userRole').textContent = userProfile.is_master ? 'Master' : userProfile.is_manager ? 'Gerente' : 'Garcom';
+}
+
+function updateManagerSections() {
+    const isMgr = isManager();
+    document.querySelectorAll('.manager-section').forEach(el => {
+        el.style.display = isMgr ? '' : 'none';
+    });
 }
 
 // ========== NAVEGACAO ==========
@@ -173,6 +186,7 @@ function showToast(msg, type='success') {
     document.getElementById('toast-container').appendChild(t);
     setTimeout(() => t.remove(), 4000);
 }
+function isMaster() { return userProfile && userProfile.is_master === true; }
 function isManager() { return userProfile && (userProfile.is_master || userProfile.is_manager); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 document.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('active'); });
@@ -624,9 +638,9 @@ async function loadReports() {
     });
 }
 
-// ========== USUARIOS ==========
+// ========== USUARIOS (APENAS MASTER) ==========
 async function loadUsers() {
-    if (!isManager()) return;
+    if (!isMaster()) { showToast('Apenas usuarios master podem gerenciar usuarios', 'error'); showSection('dashboard'); return; }
     const { data } = await sb.from('users').select('*');
     allUsers = data || [];
     renderUsers();
@@ -643,13 +657,19 @@ function renderUsers(filter='all') {
             <td>${u.email}</td>
             <td>${u.phone||'-'}</td>
             <td>${u.approved?'<span class="badge badge-approved">Aprovado</span>':'<span class="badge badge-pending-user">Pendente</span>'}</td>
-            <td>${u.is_manager?'<span class="badge badge-approved">Sim</span>':'<span class="badge badge-pending-user">Nao</span>'}</td>
-            <td>${u.is_master?'<span class="badge badge-approved">Sim</span>':'-'}</td>
+            <td>
+                <select class="role-select" onchange="setUserRole('${u.id}', this.value)" ${u.is_master?'disabled':''}>
+                    <option value="garcom" ${!u.is_manager&&!u.is_master?'selected':''}>Garcom</option>
+                    <option value="manager" ${u.is_manager&&!u.is_master?'selected':''}>Gerente</option>
+                    ${u.is_master?'<option value="master" selected>Master</option>':''}
+                </select>
+            </td>
+            <td>${u.is_master?'<span class="badge badge-approved">Master</span>':'-'}</td>
             <td>${fmtDate(u.created_at)}</td>
             <td class="action-buttons">
                 ${!u.approved&&!u.is_master?`<button class="btn btn-success btn-sm" onclick="approveUser('${u.id}')">Aprovar</button>`:''}
                 ${!u.approved&&!u.is_master?`<button class="btn btn-danger btn-sm" onclick="rejectUser('${u.id}')">Rejeitar</button>`:''}
-                ${u.approved&&!u.is_master?`<button class="btn btn-secondary btn-sm" onclick="toggleManager('${u.id}')">${u.is_manager?'Remover Gerente':'Tornar Gerente'}</button>`:''}
+                ${u.approved&&!u.is_master?`<button class="btn btn-danger btn-sm" onclick="rejectUser('${u.id}')">Remover</button>`:''}
             </td>
         </tr>
     `).join('') || '<tr><td colspan="8" style="text-align:center;color:#666;">Nenhum usuario</td></tr>';
@@ -668,17 +688,55 @@ async function approveUser(id) {
 }
 
 async function rejectUser(id) {
-    if (!confirm('Rejeitar este usuario?')) return;
+    if (!confirm('Remover este usuario?')) return;
     await sb.from('users').delete().eq('id', id);
-    showToast('Usuario removido!', 'error');
+    showToast('Usuario removido!');
     loadUsers();
 }
 
-async function toggleManager(id) {
-    const u = allUsers.find(x => x.id === id);
-    if (u) {
-        await sb.from('users').update({ is_manager: !u.is_manager }).eq('id', id);
-        showToast('Permissao atualizada!');
-        loadUsers();
-    }
+async function setUserRole(id, role) {
+    const updates = { is_manager: role === 'manager' };
+    await sb.from('users').update(updates).eq('id', id);
+    showToast('Permissao atualizada!');
+    loadUsers();
+}
+
+async function createNewUser() {
+    const name = document.getElementById('newUserName').value;
+    const email = document.getElementById('newUserEmail').value;
+    const password = document.getElementById('newUserPassword').value;
+    const phone = document.getElementById('newUserPhone').value;
+    const role = document.getElementById('newUserRole').value;
+
+    if (!name || !email || !password) { showToast('Preencha nome, email e senha', 'error'); return; }
+
+    const { data: existing } = await sb.from('users').select('id').eq('email', email).maybeSingle();
+    if (existing) { showToast('Email ja cadastrado', 'error'); return; }
+
+    const newUser = {
+        id: crypto.randomUUID(),
+        name,
+        email,
+        password,
+        phone: phone || '',
+        approved: true,
+        is_master: false,
+        is_manager: role === 'manager'
+    };
+
+    const { error } = await sb.from('users').insert(newUser);
+    if (error) { showToast('Erro ao criar usuario: ' + error.message, 'error'); return; }
+
+    closeModal('newUserModal');
+    showToast('Usuario criado com sucesso!');
+    loadUsers();
+}
+
+function openNewUserModal() {
+    document.getElementById('newUserName').value = '';
+    document.getElementById('newUserEmail').value = '';
+    document.getElementById('newUserPassword').value = '';
+    document.getElementById('newUserPhone').value = '';
+    document.getElementById('newUserRole').value = 'garcom';
+    document.getElementById('newUserModal').classList.add('active');
 }

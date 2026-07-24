@@ -180,6 +180,8 @@ tbody tr:last-child td{border-bottom:none}
 
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 
+.role-select{background:var(--bg-input);border:1px solid var(--border-color);color:var(--text-primary);padding:6px 10px;border-radius:var(--radius-sm);font-size:0.85rem;cursor:pointer}
+
 .toast{position:fixed;top:20px;right:20px;padding:14px 24px;border-radius:var(--radius-sm);color:var(--accent-white);font-weight:500;z-index:2000;animation:slideIn 0.3s ease;box-shadow:var(--shadow)}
 .toast-success{background:var(--success)}.toast-error{background:var(--danger)}.toast-info{background:var(--info)}
 @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}

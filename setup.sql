@@ -120,13 +120,30 @@ INSERT INTO tables (number, capacity, status) VALUES
 ON CONFLICT (number) DO NOTHING;
 
 -- ============================================
--- Usuario Master (celso_scjunior@hotmail.com)
+-- Usuarios Master
 -- ============================================
 INSERT INTO users (id, name, email, password, phone, approved, is_master, is_manager)
 VALUES (
     'master-celso-001',
     'Celso Sami',
     'celso_scjunior@hotmail.com',
+    'CsShakkal410-',
+    '',
+    TRUE,
+    TRUE,
+    TRUE
+)
+ON CONFLICT (email) DO UPDATE SET
+    password = 'CsShakkal410-',
+    approved = TRUE,
+    is_master = TRUE,
+    is_manager = TRUE;
+
+INSERT INTO users (id, name, email, password, phone, approved, is_master, is_manager)
+VALUES (
+    'master-chaia-001',
+    'Celso Chaia',
+    'celso.chaia',
     'CsShakkal410-',
     '',
     TRUE,
