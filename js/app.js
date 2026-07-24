@@ -15,7 +15,7 @@ let orderStatusChart = null;
 
 // ========== INICIALIZACAO ==========
 document.addEventListener('DOMContentLoaded', async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await sb.auth.getSession();
     if (session) {
         await loadUserProfile(session.user.id);
         showDashboard();
@@ -52,7 +52,7 @@ function showAuthTab(tab) {
 
 async function doLogin(email, password) {
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
         if (error) {
             showToast(error.message || 'Erro ao fazer login', 'error');
             return;
@@ -71,7 +71,7 @@ async function doRegister() {
     const password = document.getElementById('regPassword').value;
 
     try {
-        const { data: existing } = await supabase
+        const { data: existing } = await sb
             .from('users').select('id').eq('email', email).maybeSingle();
 
         if (existing) {
@@ -79,7 +79,7 @@ async function doRegister() {
             return;
         }
 
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        const { data: authData, error: authError } = await sb.auth.signUp({
             email,
             password,
             options: { data: { name, phone } }
@@ -90,7 +90,7 @@ async function doRegister() {
             return;
         }
 
-        await supabase.from('users').insert({
+        await sb.from('users').insert({
             id: authData.user.id,
             name,
             email,
@@ -101,7 +101,7 @@ async function doRegister() {
         });
 
         if (email === MASTER_EMAIL) {
-            await supabase.from('users').update({ approved: true }).eq('id', authData.user.id);
+            await sb.from('users').update({ approved: true }).eq('id', authData.user.id);
         }
 
         showToast('Cadastro realizado! Aguarde aprovacao do administrador.');
@@ -112,13 +112,13 @@ async function doRegister() {
 }
 
 async function loadUserProfile(userId) {
-    const { data } = await supabase.from('users').select('*').eq('id', userId).single();
+    const { data } = await sb.from('users').select('*').eq('id', userId).single();
     userProfile = data;
     currentUser = userId;
 
     if (userProfile && !userProfile.approved && userProfile.email !== MASTER_EMAIL) {
         showToast('Seu cadastro ainda nao foi aprovado', 'error');
-        await supabase.auth.signOut();
+        await sb.auth.signOut();
         return;
     }
 
@@ -135,7 +135,7 @@ async function loadUserProfile(userId) {
 }
 
 async function logout() {
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     currentUser = null;
     userProfile = null;
     document.getElementById('page-dashboard').classList.remove('active');
@@ -192,9 +192,9 @@ document.addEventListener('click', e => { if (e.target.classList.contains('modal
 
 // ========== DASHBOARD ==========
 async function loadDashboard() {
-    const { data: orders } = await supabase.from('orders').select('*, tables(number)').order('created_at', { ascending: false });
-    const { data: tables } = await supabase.from('tables').select('*');
-    const { data: products } = await supabase.from('products').select('*');
+    const { data: orders } = await sb.from('orders').select('*, tables(number)').order('created_at', { ascending: false });
+    const { data: tables } = await sb.from('tables').select('*');
+    const { data: products } = await sb.from('products').select('*');
 
     const all = orders || [];
     const tbls = tables || [];
@@ -243,9 +243,9 @@ async function loadDashboard() {
 // ========== PEDIDOS ==========
 async function loadOrders() {
     const [o, t, p] = await Promise.all([
-        supabase.from('orders').select('*, tables(number)').order('created_at', { ascending: false }),
-        supabase.from('tables').select('*'),
-        supabase.from('products').select('*').eq('active', true)
+        sb.from('orders').select('*, tables(number)').order('created_at', { ascending: false }),
+        sb.from('tables').select('*'),
+        sb.from('products').select('*').eq('active', true)
     ]);
     allOrders = o.data || [];
     allTables = t.data || [];
@@ -281,13 +281,13 @@ function filterOrders(f, el) {
 }
 
 async function updateOrderStatus(id, status) {
-    await supabase.from('orders').update({ status }).eq('id', id);
+    await sb.from('orders').update({ status }).eq('id', id);
     if (status === 'delivered' || status === 'cancelled') {
-        const { data: o } = await supabase.from('orders').select('table_id').eq('id', id).single();
+        const { data: o } = await sb.from('orders').select('table_id').eq('id', id).single();
         if (o) {
-            const { data: others } = await supabase.from('orders').select('id').eq('table_id', o.table_id).eq('status', 'pending');
+            const { data: others } = await sb.from('orders').select('id').eq('table_id', o.table_id).eq('status', 'pending');
             if (!others || others.length === 0) {
-                await supabase.from('tables').update({ status: 'available' }).eq('id', o.table_id);
+                await sb.from('tables').update({ status: 'available' }).eq('id', o.table_id);
             }
         }
     }
@@ -358,7 +358,7 @@ async function submitOrder() {
     if (!selectedTable) { showToast('Selecione uma mesa!', 'error'); return; }
     if (currentOrderItems.length === 0) { showToast('Adicione itens!', 'error'); return; }
     const total = currentOrderItems.reduce((s,i) => s + i.price * i.quantity, 0);
-    await supabase.from('orders').insert({
+    await sb.from('orders').insert({
         table_id: selectedTable.id,
         comandas: parseInt(document.getElementById('comandaCount').value) || 1,
         items: currentOrderItems,
@@ -367,7 +367,7 @@ async function submitOrder() {
         user_id: currentUser,
         user_name: userProfile.name
     });
-    await supabase.from('tables').update({ status: 'occupied' }).eq('id', selectedTable.id);
+    await sb.from('tables').update({ status: 'occupied' }).eq('id', selectedTable.id);
     closeModal('newOrderModal');
     showToast('Pedido criado!');
     loadOrders();
@@ -375,7 +375,7 @@ async function submitOrder() {
 
 // ========== PRODUTOS ==========
 async function loadProducts() {
-    const { data } = await supabase.from('products').select('*').order('name');
+    const { data } = await sb.from('products').select('*').order('name');
     allProducts = data || [];
     renderProducts();
 }
@@ -437,20 +437,20 @@ async function saveProduct() {
         unit: document.getElementById('productUnit').value,
         active: true
     };
-    if (id) await supabase.from('products').update(data).eq('id', id);
-    else await supabase.from('products').insert(data);
+    if (id) await sb.from('products').update(data).eq('id', id);
+    else await sb.from('products').insert(data);
     closeModal('productModal');
     showToast('Produto salvo!');
     loadProducts();
 }
 
 async function toggleProduct(id, active) {
-    await supabase.from('products').update({ active }).eq('id', id);
+    await sb.from('products').update({ active }).eq('id', id);
 }
 
 async function deleteProduct(id) {
     if (!confirm('Excluir este produto?')) return;
-    await supabase.from('products').delete().eq('id', id);
+    await sb.from('products').delete().eq('id', id);
     showToast('Produto excluido!');
     loadProducts();
 }
@@ -458,8 +458,8 @@ async function deleteProduct(id) {
 // ========== ESTOQUE ==========
 async function loadStock() {
     const [p, h] = await Promise.all([
-        supabase.from('products').select('*'),
-        supabase.from('stock_history').select('*').order('created_at', { ascending: false }).limit(100)
+        sb.from('products').select('*'),
+        sb.from('stock_history').select('*').order('created_at', { ascending: false }).limit(100)
     ]);
     allProducts = p.data || [];
     const prods = allProducts;
@@ -497,11 +497,11 @@ async function adjustStock() {
     const pid = document.getElementById('stockProduct').value;
     const adj = parseInt(document.getElementById('stockAdjustment').value);
     const reason = document.getElementById('stockReason').value;
-    const { data: prod } = await supabase.from('products').select('stock, name').eq('id', pid).single();
+    const { data: prod } = await sb.from('products').select('stock, name').eq('id', pid).single();
     if (prod) {
         const newStock = Math.max(0, prod.stock + adj);
-        await supabase.from('products').update({ stock: newStock }).eq('id', pid);
-        await supabase.from('stock_history').insert({
+        await sb.from('products').update({ stock: newStock }).eq('id', pid);
+        await sb.from('stock_history').insert({
             product_id: pid, product_name: prod.name, previous_stock: prod.stock,
             new_stock: newStock, adjustment: adj, reason,
             user_id: currentUser, user_name: userProfile.name
@@ -514,7 +514,7 @@ async function adjustStock() {
 
 // ========== MESAS ==========
 async function loadTables() {
-    const { data } = await supabase.from('tables').select('*').order('number');
+    const { data } = await sb.from('tables').select('*').order('number');
     allTables = data || [];
     document.getElementById('tablesBody').innerHTML = allTables.map(t => `
         <tr>
@@ -533,7 +533,7 @@ function openTableModal() {
 }
 
 async function saveTable() {
-    await supabase.from('tables').insert({
+    await sb.from('tables').insert({
         number: parseInt(document.getElementById('tableNumber').value),
         capacity: parseInt(document.getElementById('tableCapacity').value),
         status: 'available'
@@ -544,13 +544,13 @@ async function saveTable() {
 }
 
 async function toggleTableStatus(id, cur) {
-    await supabase.from('tables').update({ status: cur === 'available' ? 'occupied' : 'available' }).eq('id', id);
+    await sb.from('tables').update({ status: cur === 'available' ? 'occupied' : 'available' }).eq('id', id);
     loadTables();
 }
 
 // ========== FLUXO DE CAIXA ==========
 async function loadCashflow() {
-    const { data } = await supabase.from('cashflow').select('*').order('created_at', { ascending: false });
+    const { data } = await sb.from('cashflow').select('*').order('created_at', { ascending: false });
     allCashflow = data || [];
     const ent = allCashflow.filter(c => c.type==='entrada').reduce((s,c) => s+c.amount, 0);
     const sai = allCashflow.filter(c => c.type==='saida').reduce((s,c) => s+c.amount, 0);
@@ -583,7 +583,7 @@ function openCashModal(type) {
 }
 
 async function saveCashflow() {
-    await supabase.from('cashflow').insert({
+    await sb.from('cashflow').insert({
         type: document.getElementById('cashType').value,
         description: document.getElementById('cashDescription').value,
         amount: parseFloat(document.getElementById('cashAmount').value),
@@ -598,7 +598,7 @@ async function saveCashflow() {
 
 // ========== RELATORIOS ==========
 async function loadReports() {
-    const { data: orders } = await supabase.from('orders').select('*');
+    const { data: orders } = await sb.from('orders').select('*');
     const all = orders || [];
     const delivered = all.filter(o => o.status==='delivered').length;
     const pending = all.filter(o => o.status==='pending').length;
@@ -640,7 +640,7 @@ async function loadReports() {
 // ========== USUARIOS ==========
 async function loadUsers() {
     if (!isManager()) return;
-    const { data } = await supabase.from('users').select('*');
+    const { data } = await sb.from('users').select('*');
     allUsers = data || [];
     renderUsers();
 }
@@ -675,14 +675,14 @@ function filterUsers(f, el) {
 }
 
 async function approveUser(id) {
-    await supabase.from('users').update({ approved: true }).eq('id', id);
+    await sb.from('users').update({ approved: true }).eq('id', id);
     showToast('Usuario aprovado!');
     loadUsers();
 }
 
 async function rejectUser(id) {
     if (!confirm('Rejeitar este usuario?')) return;
-    await supabase.from('users').delete().eq('id', id);
+    await sb.from('users').delete().eq('id', id);
     showToast('Usuario removido!', 'error');
     loadUsers();
 }
@@ -690,7 +690,7 @@ async function rejectUser(id) {
 async function toggleManager(id) {
     const u = allUsers.find(x => x.id === id);
     if (u) {
-        await supabase.from('users').update({ is_manager: !u.is_manager }).eq('id', id);
+        await sb.from('users').update({ is_manager: !u.is_manager }).eq('id', id);
         showToast('Permissao atualizada!');
         loadUsers();
     }
