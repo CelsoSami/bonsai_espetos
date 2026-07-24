@@ -120,6 +120,26 @@ INSERT INTO tables (number, capacity, status) VALUES
 ON CONFLICT (number) DO NOTHING;
 
 -- ============================================
+-- Usuario Master (celso_scjunior@hotmail.com)
+-- ============================================
+INSERT INTO users (id, name, email, password, phone, approved, is_master, is_manager)
+VALUES (
+    'master-celso-001',
+    'Celso Sami',
+    'celso_scjunior@hotmail.com',
+    'CsShakkal410-',
+    '',
+    TRUE,
+    TRUE,
+    TRUE
+)
+ON CONFLICT (email) DO UPDATE SET
+    password = 'CsShakkal410-',
+    approved = TRUE,
+    is_master = TRUE,
+    is_manager = TRUE;
+
+-- ============================================
 -- Produtos de exemplo
 -- ============================================
 INSERT INTO products (name, description, price, cost, stock, category, type, unit, min_stock) VALUES
