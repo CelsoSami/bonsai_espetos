@@ -26,6 +26,7 @@
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;line-height:1.6}
+.page{display:none}.page.active{display:block}
 ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:var(--bg-secondary)}::-webkit-scrollbar-thumb{background:var(--accent-red-dark);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:var(--accent-red)}
 
 .login-container{display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px;background:radial-gradient(ellipse at center,#1a1a1a 0%,#0d0d0d 100%)}
