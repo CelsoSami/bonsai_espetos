@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS products (
     unit TEXT DEFAULT 'un',
     min_stock INTEGER DEFAULT 5,
     active BOOLEAN DEFAULT TRUE,
+    station TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -87,6 +88,19 @@ CREATE TABLE IF NOT EXISTS stock_history (
     user_id TEXT,
     user_name TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Tabela de Pedidos da Cozinha/Churrasqueiro
+CREATE TABLE IF NOT EXISTS kitchen_orders (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    table_number INTEGER DEFAULT 0,
+    product_name TEXT NOT NULL,
+    quantity INTEGER DEFAULT 1,
+    station TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
 );
 
 -- ============================================
