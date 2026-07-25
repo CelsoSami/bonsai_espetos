@@ -238,14 +238,7 @@
                             <h1>Mesas</h1>
                             <button class="btn btn-primary btn-sm" onclick="openTableModal()">+ Nova Mesa</button>
                         </div>
-                        <div class="card"><div class="card-body">
-                            <div class="table-container">
-                                <table>
-                                    <thead><tr><th>Numero</th><th>Capacidade</th><th>Status</th><th>Acoes</th></tr></thead>
-                                    <tbody id="tablesBody"></tbody>
-                                </table>
-                            </div>
-                        </div></div>
+                        <div id="tablesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px;padding:0 0 24px 0;"></div>
                     </div>
 
                     <!-- FLUXO DE CAIXA -->

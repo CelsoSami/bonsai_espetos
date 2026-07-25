@@ -413,7 +413,7 @@ async function submitOrder() {
         user_id: currentUser,
         user_name: userProfile.name
     }).select().single();
-    await sb.from('tables').update({ status: 'occupied' }).eq('id', selectedTable.id);
+    await sb.from('tables').update({ status: 'occupied', occupied_at: new Date().toISOString() }).eq('id', selectedTable.id);
     if (newOrder) {
         const stationItems = [];
         for (const item of currentOrderItems) {
@@ -586,17 +586,139 @@ async function adjustStock() {
 }
 
 // ========== MESAS ==========
+let tableTimers = {};
+
 async function loadTables() {
-    const { data } = await sb.from('tables').select('*').order('number');
-    allTables = data || [];
-    document.getElementById('tablesBody').innerHTML = allTables.map(t => `
-        <tr>
-            <td><strong>Mesa ${t.number}</strong></td>
-            <td>${t.capacity} lugares</td>
-            <td>${statusBadge(t.status)}</td>
-            <td><button class="btn btn-secondary btn-sm" onclick="toggleTableStatus('${t.id}','${t.status}')">${t.status==='available'?'Ocupar':'Liberar'}</button></td>
-        </tr>
-    `).join('') || '<tr><td colspan="4" style="text-align:center;color:#666;">Nenhuma mesa</td></tr>';
+    const [tRes, oRes] = await Promise.all([
+        sb.from('tables').select('*').order('number'),
+        sb.from('orders').select('*, tables(number)').order('created_at', { ascending: true })
+    ]);
+    allTables = (tRes.data || []).sort((a,b) => a.number - b.number);
+    const allOrdersList = oRes.data || [];
+
+    Object.keys(tableTimers).forEach(k => clearInterval(tableTimers[k]));
+    tableTimers = {};
+
+    document.getElementById('tablesGrid').innerHTML = allTables.map(t => {
+        const tableOrders = allOrdersList.filter(o => o.table_id === t.id);
+        const pendingOrders = tableOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
+        const totalSpent = tableOrders.filter(o => o.status === 'delivered').reduce((s,o) => s + parseFloat(o.total||0), 0);
+        const totalPending = pendingOrders.reduce((s,o) => s + parseFloat(o.total||0), 0);
+        const allItems = tableOrders.flatMap(o => (o.items||[]).map(it => ({...it, orderStatus: o.status, orderId: o.id})));
+        const timerId = `timer-${t.id}`;
+
+        if (t.status === 'occupied') {
+            const occupiedSince = t.occupied_at || (pendingOrders.length > 0 ? pendingOrders[0].created_at : null);
+            return `
+            <div class="card" style="border-color:#e63946;">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <h2 style="margin:0;">Mesa ${t.number} <span style="font-size:0.75rem;color:#a0a0a0;">${t.capacity} lugares</span></h2>
+                        <div style="font-size:0.85rem;color:#f39c12;margin-top:4px;">
+                            Ocupada ha: <strong id="${timerId}">--:--</strong>
+                            ${occupiedSince ? `<span style="color:#666;font-size:0.75rem;margin-left:8px;">desde ${fmtDate(occupiedSince)}</span>` : ''}
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-primary btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">+ Pedido</button>
+                        <button class="btn btn-success btn-sm" onclick="closeTable('${t.id}')">Liberar</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div style="display:flex;gap:16px;margin-bottom:12px;">
+                        <div style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:10px 16px;text-align:center;flex:1;">
+                            <div style="font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;">Pendente</div>
+                            <div style="font-size:1.2rem;font-weight:700;color:#f39c12;">${fmt(totalPending)}</div>
+                        </div>
+                        <div style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:10px 16px;text-align:center;flex:1;">
+                            <div style="font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;">Entregue</div>
+                            <div style="font-size:1.2rem;font-weight:700;color:#2ecc71;">${fmt(totalSpent)}</div>
+                        </div>
+                    </div>
+                    ${allItems.length > 0 ? `
+                    <div style="border-top:1px solid #333;padding-top:12px;">
+                        <div style="font-size:0.75rem;text-transform:uppercase;color:#a0a0a0;margin-bottom:8px;letter-spacing:1px;">Todos os Itens</div>
+                        ${allItems.map(it => `
+                            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222;">
+                                <span>${it.quantity}x ${it.name}</span>
+                                <span style="color:#a0a0a0;">${fmt(it.price * it.quantity)}</span>
+                            </div>
+                        `).join('')}
+                    </div>` : '<div style="color:#666;text-align:center;padding:12px;">Nenhum item ainda</div>'}
+                </div>
+            </div>`;
+        } else {
+            return `
+            <div class="card" style="border-color:#333;">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <h2 style="margin:0;">Mesa ${t.number} <span style="font-size:0.75rem;color:#a0a0a0;">${t.capacity} lugares</span></h2>
+                        <div style="font-size:0.85rem;color:#2ecc71;margin-top:4px;">Disponivel</div>
+                    </div>
+                    <button class="btn btn-warning btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">Ocupar</button>
+                </div>
+            </div>`;
+        }
+    }).join('');
+
+    allTables.forEach(t => {
+        if (t.status === 'occupied') {
+            const occupiedSince = t.occupied_at || (allOrdersList.filter(o => o.table_id === t.id && (o.status === 'pending' || o.status === 'preparing')).length > 0 ? allOrdersList.filter(o => o.table_id === t.id)[0]?.created_at : null);
+            if (occupiedSince) {
+                const start = new Date(occupiedSince).getTime();
+                const el = document.getElementById(`timer-${t.id}`);
+                function updateTimer() {
+                    if (!el) return;
+                    const diff = Date.now() - start;
+                    const h = Math.floor(diff / 3600000);
+                    const m = Math.floor((diff % 3600000) / 60000);
+                    const s = Math.floor((diff % 60000) / 1000);
+                    el.textContent = h > 0 ? `${h}h ${m.toString().padStart(2,'0')}m` : `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                }
+                updateTimer();
+                tableTimers[t.id] = setInterval(updateTimer, 1000);
+            }
+        }
+    });
+}
+
+function openNewOrderForTable(tableId, tableNumber) {
+    selectedTable = allTables.find(t => t.id === tableId) || { id: tableId, number: tableNumber };
+    currentOrderItems = [];
+    document.getElementById('comandaCount').value = 1;
+    document.getElementById('orderItems').innerHTML = '';
+    document.getElementById('orderTotal').textContent = 'R$ 0,00';
+
+    document.getElementById('tableSelector').innerHTML = allTables.map(t => `
+        <button class="table-btn ${t.id===tableId?'selected':''} ${t.status==='occupied'?'occupied':''}" onclick="selectTable('${t.id}',${t.number},${t.capacity})">
+            <div class="table-number">${t.number}</div>
+            <div class="table-capacity">${t.capacity} lug</div>
+        </button>
+    `).join('');
+
+    document.getElementById('productGrid').innerHTML = allProducts.map(p => {
+        const stationTag = p.station === 'cozinha' ? '<span style="font-size:0.65rem;color:#3498db;font-weight:700;display:block;">COZINHA</span>'
+            : p.station === 'churrasqueiro' ? '<span style="font-size:0.65rem;color:#f39c12;font-weight:700;display:block;">CHURRASQUEIRO</span>' : '';
+        return `
+        <div class="product-chip" onclick="addToOrder('${p.id}',${JSON.stringify(p.name).replace(/"/g,'&quot;')},${p.price})">
+            ${stationTag}
+            <div class="product-name">${p.name}</div>
+            <div class="product-price">${fmt(p.price)}</div>
+        </div>
+    `}).join('');
+
+    document.getElementById('newOrderModal').classList.add('active');
+}
+
+async function closeTable(id) {
+    if (!confirm('Liberar esta mesa? Pedidos pendentes serao cancelados.')) return;
+    const { data: pendings } = await sb.from('orders').select('id').eq('table_id', id).in('status', ['pending','preparing']);
+    if (pendings && pendings.length > 0) {
+        await sb.from('orders').update({ status: 'cancelled' }).in('id', pendings.map(p => p.id));
+    }
+    await sb.from('tables').update({ status: 'available', occupied_at: null }).eq('id', id);
+    showToast('Mesa liberada!');
+    loadTables();
 }
 
 function openTableModal() {
@@ -613,11 +735,6 @@ async function saveTable() {
     });
     closeModal('tableModal');
     showToast('Mesa criada!');
-    loadTables();
-}
-
-async function toggleTableStatus(id, cur) {
-    await sb.from('tables').update({ status: cur === 'available' ? 'occupied' : 'available' }).eq('id', id);
     loadTables();
 }
 
