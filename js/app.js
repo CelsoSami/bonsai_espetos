@@ -385,7 +385,10 @@ async function submitOrder() {
             }
         }
         if (stationItems.length > 0) {
-            await sb.from('kitchen_orders').insert(stationItems);
+            console.log('Inserindo kitchen_orders:', stationItems);
+            const { data: koData, error: koErr } = await sb.from('kitchen_orders').insert(stationItems);
+            if (koErr) console.error('Erro ao inserir kitchen_orders:', koErr);
+            else console.log('Kitchen_orders inseridos:', koData);
         }
     }
     closeModal('newOrderModal');

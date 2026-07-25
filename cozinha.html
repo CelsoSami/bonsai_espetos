@@ -54,11 +54,12 @@
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         async function loadOrders() {
-            const { data: pending } = await sb.from('kitchen_orders')
+            const { data: pending, error } = await sb.from('kitchen_orders')
                 .select('*')
                 .eq('station', STATION)
                 .eq('status', 'pending')
                 .order('created_at', { ascending: true });
+            if (error) { console.error('Erro ao buscar kitchen_orders:', error); }
 
             const today = new Date().toISOString().slice(0, 10);
             const { data: readyToday } = await sb.from('kitchen_orders')
