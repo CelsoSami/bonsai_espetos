@@ -39,37 +39,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setupForms() {
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const email = document.getElementById('loginEmail').value;
+        const login = document.getElementById('loginEmail').value;
         const password = document.getElementById('loginPassword').value;
-        await doLogin(email, password);
-    });
-
-    document.getElementById('registerForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await doRegister();
+        await doLogin(login, password);
     });
 }
 
 // ========== AUTENTICACAO ==========
-function showAuthTab(tab) {
-    document.querySelectorAll('#auth-tabs .tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-    if (tab === 'login') {
-        document.querySelectorAll('#auth-tabs .tab')[0].classList.add('active');
-        document.getElementById('loginForm').classList.add('active');
-    } else {
-        document.querySelectorAll('#auth-tabs .tab')[1].classList.add('active');
-        document.getElementById('registerForm').classList.add('active');
-    }
-}
-
-async function doLogin(email, password) {
+async function doLogin(login, password) {
     try {
-        const { data: users, error } = await sb.from('users').select('*').eq('email', email);
+        const { data: users, error } = await sb.from('users').select('*').eq('email', login);
         if (error) { showToast('Erro ao buscar usuario: ' + error.message, 'error'); return; }
-        if (!users || users.length === 0) { showToast('Email ou senha invalidos', 'error'); return; }
+        if (!users || users.length === 0) { showToast('Usuario ou senha invalidos', 'error'); return; }
         const user = users[0];
-        if (user.password !== password) { showToast('Email ou senha invalidos', 'error'); return; }
+        if (user.password !== password) { showToast('Usuario ou senha invalidos', 'error'); return; }
         if (!user.approved) { showToast('Cadastro pendente de aprovacao', 'error'); return; }
         currentUser = user.id;
         userProfile = user;
@@ -77,44 +60,6 @@ async function doLogin(email, password) {
         showDashboard();
     } catch (err) {
         showToast('Erro de conexao: ' + err.message, 'error');
-    }
-}
-
-async function doRegister() {
-    const name = document.getElementById('regName').value;
-    const email = document.getElementById('regEmail').value;
-    const phone = document.getElementById('regPhone').value;
-    const password = document.getElementById('regPassword').value;
-
-    try {
-        const { data: existing } = await sb.from('users').select('id').eq('email', email).maybeSingle();
-        if (existing) { showToast('Email ja cadastrado', 'error'); return; }
-
-        const newUser = {
-            id: crypto.randomUUID(),
-            name,
-            email,
-            password,
-            phone,
-            approved: MASTER_EMAILS.includes(email),
-            is_master: MASTER_EMAILS.includes(email),
-            is_manager: false
-        };
-
-        const { error } = await sb.from('users').insert(newUser);
-        if (error) { showToast('Erro ao cadastrar: ' + error.message, 'error'); return; }
-
-        if (MASTER_EMAILS.includes(email)) {
-            currentUser = newUser.id;
-            userProfile = newUser;
-            localStorage.setItem('bonsai_user', newUser.id);
-            showDashboard();
-        } else {
-            showToast('Cadastro realizado! Aguarde aprovacao do administrador.');
-            showAuthTab('login');
-        }
-    } catch (err) {
-        showToast('Erro ao cadastrar: ' + err.message, 'error');
     }
 }
 
