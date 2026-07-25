@@ -148,7 +148,7 @@ document.addEventListener('click', e => {
 // ========== DASHBOARD ==========
 async function loadDashboard() {
     const { data: orders } = await sb.from('orders').select('*, tables(number)').order('created_at', { ascending: false });
-    const { data: tables } = await sb.from('tables').select('*');
+    const { data: tables } = await sb.from('tables').select('*').order('number');
     const { data: products } = await sb.from('products').select('*');
 
     const all = orders || [];
@@ -239,23 +239,28 @@ async function acknowledgeReady(id) {
 async function loadOrders() {
     const [o, t, p] = await Promise.all([
         sb.from('orders').select('*, tables(number)').order('created_at', { ascending: false }),
-        sb.from('tables').select('*'),
+        sb.from('tables').select('*').order('number'),
         sb.from('products').select('*').eq('active', true)
     ]);
     allOrders = o.data || [];
-    allTables = t.data || [];
+    allTables = (t.data || []).sort((a,b) => a.number - b.number);
     allProducts = p.data || [];
+    populateTableFilter();
     renderOrders();
 }
 
 function renderOrders() {
-    const f = currentOrderFilter === 'all' ? allOrders : allOrders.filter(o => o.status === currentOrderFilter);
+    const tblFilter = document.getElementById('orderTableFilter');
+    const tableVal = tblFilter ? tblFilter.value : '';
+    let f = currentOrderFilter === 'all' ? allOrders : allOrders.filter(o => o.status === currentOrderFilter);
+    if (tableVal) f = f.filter(o => o.table_id === tableVal);
+
     document.getElementById('ordersBody').innerHTML = f.map(o => `
         <tr>
             <td>#${(o.id||'').slice(0,8)}</td>
             <td>${o.tables ? o.tables.number : '-'}</td>
             <td>${o.comandas || 1}</td>
-            <td>${(o.items||[]).length} itens</td>
+            <td><button class="btn btn-secondary btn-sm" onclick="viewOrderDetail('${o.id}')">${(o.items||[]).length} itens</button></td>
             <td>${fmt(o.total)}</td>
             <td>${statusBadge(o.status)}</td>
             <td>${o.user_name || '-'}</td>
@@ -266,6 +271,48 @@ function renderOrders() {
             </td>
         </tr>
     `).join('') || '<tr><td colspan="8" style="text-align:center;color:#666;">Nenhum pedido</td></tr>';
+}
+
+function populateTableFilter() {
+    const sel = document.getElementById('orderTableFilter');
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Todas as Mesas</option>' + allTables.sort((a,b) => a.number - b.number).map(t =>
+        `<option value="${t.id}" ${t.id===current?'selected':''}>Mesa ${t.number}</option>`
+    ).join('');
+}
+
+function viewOrderDetail(id) {
+    const o = allOrders.find(x => x.id === id);
+    if (!o) return;
+    document.getElementById('orderDetailTitle').textContent = `Pedido #${(o.id||'').slice(0,8)} - Mesa ${o.tables ? o.tables.number : '-'}`;
+    const items = o.items || [];
+    document.getElementById('orderDetailBody').innerHTML = `
+        <div style="margin-bottom:16px;">
+            <span style="color:#a0a0a0;">Status: </span>${statusBadge(o.status)}
+            <span style="margin-left:16px;color:#a0a0a0;">Comandas: </span><strong>${o.comandas || 1}</strong>
+            <span style="margin-left:16px;color:#a0a0a0;">Atendente: </span><strong>${o.user_name || '-'}</strong>
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="border-bottom:1px solid #333;"><th style="text-align:left;padding:8px 0;color:#a0a0a0;">Produto</th><th style="text-align:center;padding:8px 0;color:#a0a0a0;">Qtd</th><th style="text-align:right;padding:8px 0;color:#a0a0a0;">Preco</th><th style="text-align:right;padding:8px 0;color:#a0a0a0;">Subtotal</th></tr></thead>
+            <tbody>
+                ${items.map(it => `<tr style="border-bottom:1px solid #222;">
+                    <td style="padding:10px 0;font-weight:600;">${it.name}</td>
+                    <td style="text-align:center;padding:10px 0;">${it.quantity}x</td>
+                    <td style="text-align:right;padding:10px 0;">${fmt(it.price)}</td>
+                    <td style="text-align:right;padding:10px 0;font-weight:700;color:#e63946;">${fmt(it.price * it.quantity)}</td>
+                </tr>`).join('')}
+            </tbody>
+        </table>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #333;display:flex;justify-content:space-between;">
+            <strong style="font-size:1.1rem;">TOTAL</strong>
+            <strong style="font-size:1.3rem;color:#e63946;">${fmt(o.total)}</strong>
+        </div>
+        <div style="margin-top:8px;color:#666;font-size:0.8rem;">
+            Criado em: ${fmtDate(o.created_at)}
+        </div>
+    `;
+    document.getElementById('orderDetailModal').classList.add('active');
 }
 
 function filterOrders(f, el) {

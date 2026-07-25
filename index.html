@@ -167,6 +167,11 @@
                             <button class="tab" onclick="filterOrders('preparing',this)">Preparando</button>
                             <button class="tab" onclick="filterOrders('delivered',this)">Entregues</button>
                         </div>
+                        <div class="filter-bar">
+                            <select id="orderTableFilter" onchange="renderOrders()" style="padding:8px 12px;border-radius:6px;border:1px solid #333;background:#1a1a1a;color:#f5f5f5;font-size:0.85rem;">
+                                <option value="">Todas as Mesas</option>
+                            </select>
+                        </div>
                         <div class="card"><div class="card-body">
                             <div class="table-container">
                                 <table>
@@ -335,6 +340,16 @@
                 <button class="btn btn-secondary" onclick="closeModal('newOrderModal')">Cancelar</button>
                 <button class="btn btn-primary" onclick="submitOrder()">Confirmar Pedido</button>
             </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="orderDetailModal">
+        <div class="modal" style="max-width:600px;">
+            <div class="modal-header">
+                <h2 id="orderDetailTitle">Detalhes do Pedido</h2>
+                <button class="modal-close" onclick="closeModal('orderDetailModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="orderDetailBody"></div>
         </div>
     </div>
 
