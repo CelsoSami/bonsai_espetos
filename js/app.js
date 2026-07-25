@@ -94,7 +94,10 @@ function updateManagerSections() {
 }
 
 // ========== NAVEGACAO ==========
+function closeSidebar() { document.querySelector('.sidebar').classList.remove('open'); }
+
 function showSection(name) {
+    closeSidebar();
     document.querySelectorAll('.section').forEach(s => { s.style.display = 'none'; s.classList.remove('active'); });
     document.querySelectorAll('.nav-item[data-section]').forEach(n => n.classList.remove('active'));
     const section = document.getElementById('section-' + name);
@@ -134,7 +137,13 @@ function showToast(msg, type='success') {
 function isMaster() { return userProfile && userProfile.is_master === true; }
 function isManager() { return userProfile && (userProfile.is_master || userProfile.is_manager); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-document.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('active'); });
+document.addEventListener('click', e => {
+    if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('active');
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar && sidebar.classList.contains('open') && !sidebar.contains(e.target) && !e.target.closest('.menu-toggle')) {
+        sidebar.classList.remove('open');
+    }
+});
 
 // ========== DASHBOARD ==========
 async function loadDashboard() {
