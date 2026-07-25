@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS products (
     unit TEXT DEFAULT 'un',
     min_stock INTEGER DEFAULT 5,
     active BOOLEAN DEFAULT TRUE,
+    station TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -89,6 +90,19 @@ CREATE TABLE IF NOT EXISTS stock_history (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Tabela de Pedidos da Cozinha/Churrasqueiro
+CREATE TABLE IF NOT EXISTS kitchen_orders (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    table_number INTEGER DEFAULT 0,
+    product_name TEXT NOT NULL,
+    quantity INTEGER DEFAULT 1,
+    station TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
 -- ============================================
 -- Habilitar RLS (Row Level Security)
 -- ============================================
@@ -98,6 +112,7 @@ ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cashflow ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kitchen_orders ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- Politicas de acesso (permite tudo)
@@ -108,6 +123,7 @@ CREATE POLICY "allow_all_tables" ON tables FOR ALL USING (true) WITH CHECK (true
 CREATE POLICY "allow_all_orders" ON orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_cashflow" ON cashflow FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_stock_history" ON stock_history FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_kitchen_orders" ON kitchen_orders FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================
 -- Mesas padrao

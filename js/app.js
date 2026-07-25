@@ -193,6 +193,46 @@ async function loadDashboard() {
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0a0' } } } }
     });
+
+    loadReadyItems();
+}
+
+async function loadReadyItems() {
+    try {
+        const { data: ready } = await sb.from('kitchen_orders')
+            .select('*')
+            .eq('status', 'ready')
+            .order('completed_at', { ascending: false })
+            .limit(20);
+        const items = ready || [];
+        const card = document.getElementById('readyItemsCard');
+        if (items.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+        card.style.display = 'block';
+        document.getElementById('readyItemsBody').innerHTML = items.map(item => {
+            const ago = Math.floor((Date.now() - new Date(item.completed_at).getTime()) / 60000);
+            const timeAgo = ago < 1 ? 'agora' : `${ago} min`;
+            return `
+                <tr>
+                    <td>Mesa ${item.table_number}</td>
+                    <td>${item.product_name}</td>
+                    <td>${item.quantity}x</td>
+                    <td>${item.station === 'cozinha' ? 'Cozinha' : 'Churrasqueiro'}</td>
+                    <td>${timeAgo}</td>
+                    <td><button class="btn btn-primary btn-sm" onclick="acknowledgeReady('${item.id}')">Recebido</button></td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('loadReadyItems error:', err);
+    }
+}
+
+async function acknowledgeReady(id) {
+    await sb.from('kitchen_orders').update({ status: 'delivered' }).eq('id', id);
+    loadReadyItems();
 }
 
 // ========== PEDIDOS ==========
@@ -264,12 +304,16 @@ function openNewOrderModal() {
         </button>
     `).join('');
 
-    document.getElementById('productGrid').innerHTML = allProducts.map(p => `
+    document.getElementById('productGrid').innerHTML = allProducts.map(p => {
+        const stationTag = p.station === 'cozinha' ? '<span style="font-size:0.65rem;color:#3498db;font-weight:700;display:block;">COZINHA</span>'
+            : p.station === 'churrasqueiro' ? '<span style="font-size:0.65rem;color:#f39c12;font-weight:700;display:block;">CHURRASQUEIRO</span>' : '';
+        return `
         <div class="product-chip" onclick="addToOrder('${p.id}',${JSON.stringify(p.name).replace(/"/g,'&quot;')},${p.price})">
+            ${stationTag}
             <div class="product-name">${p.name}</div>
             <div class="product-price">${fmt(p.price)}</div>
         </div>
-    `).join('');
+    `}).join('');
 
     document.getElementById('newOrderModal').classList.add('active');
 }
@@ -313,7 +357,7 @@ async function submitOrder() {
     if (!selectedTable) { showToast('Selecione uma mesa!', 'error'); return; }
     if (currentOrderItems.length === 0) { showToast('Adicione itens!', 'error'); return; }
     const total = currentOrderItems.reduce((s,i) => s + i.price * i.quantity, 0);
-    await sb.from('orders').insert({
+    const { data: newOrder } = await sb.from('orders').insert({
         table_id: selectedTable.id,
         comandas: parseInt(document.getElementById('comandaCount').value) || 1,
         items: currentOrderItems,
@@ -321,8 +365,29 @@ async function submitOrder() {
         status: 'pending',
         user_id: currentUser,
         user_name: userProfile.name
-    });
+    }).select().single();
     await sb.from('tables').update({ status: 'occupied' }).eq('id', selectedTable.id);
+    if (newOrder) {
+        const stationItems = [];
+        for (const item of currentOrderItems) {
+            const prod = allProducts.find(p => p.id === item.product_id);
+            if (prod && prod.station) {
+                for (let i = 0; i < item.quantity; i++) {
+                    stationItems.push({
+                        order_id: newOrder.id,
+                        table_number: selectedTable.number,
+                        product_name: item.name,
+                        quantity: 1,
+                        station: prod.station,
+                        status: 'pending'
+                    });
+                }
+            }
+        }
+        if (stationItems.length > 0) {
+            await sb.from('kitchen_orders').insert(stationItems);
+        }
+    }
     closeModal('newOrderModal');
     showToast('Pedido criado!');
     loadOrders();
@@ -350,13 +415,14 @@ function renderProducts() {
             <td>${fmt(p.cost||0)}</td>
             <td style="color:${p.stock<=p.min_stock?'#e63946':'#2ecc71'}"><strong>${p.stock}</strong></td>
             <td>${p.min_stock||5}</td>
+            <td>${p.station==='cozinha'?'<span style="color:#3498db;font-weight:700;">Cozinha</span>':p.station==='churrasqueiro'?'<span style="color:#f39c12;font-weight:700;">Churrasqueiro</span>':'-'}</td>
             <td><label class="switch"><input type="checkbox" ${p.active?'checked':''} onchange="toggleProduct('${p.id}',this.checked)"><span class="slider"></span></label></td>
             <td class="action-buttons">
                 <button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')">Editar</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">Excluir</button>
             </td>
         </tr>
-    `).join('') || '<tr><td colspan="9" style="text-align:center;color:#666;">Nenhum produto</td></tr>';
+    `).join('') || '<tr><td colspan="10" style="text-align:center;color:#666;">Nenhum produto</td></tr>';
 }
 
 function filterProducts() { renderProducts(); }
@@ -373,6 +439,7 @@ function openProductModal(p = null) {
     document.getElementById('productMinStock').value = p ? p.min_stock||5 : 5;
     document.getElementById('productType').value = p ? p.type||'' : '';
     document.getElementById('productUnit').value = p ? p.unit||'un' : 'un';
+    document.getElementById('productStation').value = p ? p.station||'' : '';
     document.getElementById('productModal').classList.add('active');
 }
 
@@ -390,6 +457,7 @@ async function saveProduct() {
         min_stock: parseInt(document.getElementById('productMinStock').value),
         type: document.getElementById('productType').value,
         unit: document.getElementById('productUnit').value,
+        station: document.getElementById('productStation').value,
         active: true
     };
     if (id) await sb.from('products').update(data).eq('id', id);
