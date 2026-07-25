@@ -324,12 +324,15 @@ function filterOrders(f, el) {
 
 async function updateOrderStatus(id, status) {
     await sb.from('orders').update({ status }).eq('id', id);
+    if (status === 'cancelled') {
+        await sb.from('kitchen_orders').update({ status: 'cancelled' }).eq('order_id', id).eq('status', 'pending');
+    }
     if (status === 'delivered' || status === 'cancelled') {
         const { data: o } = await sb.from('orders').select('table_id').eq('id', id).single();
         if (o) {
             const { data: others } = await sb.from('orders').select('id').eq('table_id', o.table_id).eq('status', 'pending');
             if (!others || others.length === 0) {
-                await sb.from('tables').update({ status: 'available' }).eq('id', o.table_id);
+                await sb.from('tables').update({ status: 'available', occupied_at: null }).eq('id', o.table_id);
             }
         }
     }
@@ -714,7 +717,9 @@ async function closeTable(id) {
     if (!confirm('Liberar esta mesa? Pedidos pendentes serao cancelados.')) return;
     const { data: pendings } = await sb.from('orders').select('id').eq('table_id', id).in('status', ['pending','preparing']);
     if (pendings && pendings.length > 0) {
-        await sb.from('orders').update({ status: 'cancelled' }).in('id', pendings.map(p => p.id));
+        const pendingIds = pendings.map(p => p.id);
+        await sb.from('orders').update({ status: 'cancelled' }).in('id', pendingIds);
+        await sb.from('kitchen_orders').update({ status: 'cancelled' }).in('order_id', pendingIds).eq('status', 'pending');
     }
     await sb.from('tables').update({ status: 'available', occupied_at: null }).eq('id', id);
     showToast('Mesa liberada!');
