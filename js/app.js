@@ -870,7 +870,7 @@ function renderComandaDetails() {
     const items = o.items || [];
     const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
 
-    document.getElementById('btnComandaEdit').style.display = isActive ? '' : 'none';
+    document.getElementById('btnComandaEdit').style.display = '';
     document.getElementById('btnComandaReceipt').style.display = items.length ? '' : 'none';
 
     let html = `
