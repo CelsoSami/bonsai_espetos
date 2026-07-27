@@ -1033,31 +1033,50 @@ async function saveComandaEdit() {
     showToast('Comanda atualizada!');
 }
 
-function openComandaReceipt() {
+async function openComandaReceipt() {
     if (!currentComanda) return;
     const o = currentComanda;
     const items = o.items || [];
     const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
+    const tableNum = o.table_id ? allTables.find(t => t.id === o.table_id)?.number || 0 : 0;
+
+    await sb.from('receipts').insert({
+        order_id: o.id,
+        table_number: tableNum,
+        comanda_name: o.comandas || '',
+        items: items,
+        total: total,
+        status: 'open'
+    });
 
     document.getElementById('comandaModalTitle').textContent = `Conta: ${o.comandas || 'Sem nome'}`;
 
     let html = `
-        <div style="text-align:center;padding:16px 0 8px;border-bottom:2px dashed #333;">
-            <div style="font-size:1.1rem;font-weight:700;color:#e63946;">BONSAI ESPETOS</div>
-            <div style="color:#a0a0a0;font-size:0.8rem;margin-top:4px;">${o.table_id ? 'Mesa ' + (allTables.find(t => t.id === o.table_id)?.number || '-') : 'Balcao'}</div>
-            <div style="color:#a0a0a0;font-size:0.75rem;margin-top:2px;">${fmtDate(o.created_at)}</div>
-        </div>
-        <div style="padding:12px 0;">
-            ${items.map(it => `
-                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222;">
-                    <span>${it.quantity}x ${it.name}</span>
-                    <span style="font-weight:600;">${fmt(it.price * it.quantity)}</span>
-                </div>
-            `).join('')}
-        </div>
-        <div style="text-align:center;padding:12px 0;border-top:2px dashed #333;">
-            <div style="color:#a0a0a0;font-size:0.8rem;">TOTAL A PAGAR</div>
-            <div style="font-size:1.5rem;font-weight:700;color:#2ecc71;margin-top:4px;">${fmt(total)}</div>
+        <div style="font-family:'Courier New',monospace;max-width:320px;margin:0 auto;background:#1a1a2e;border:1px dashed #444;padding:16px;">
+            <div style="text-align:center;margin-bottom:12px;">
+                <div style="font-size:1.2rem;font-weight:900;letter-spacing:2px;color:#e63946;">BONSAI ESPETOS</div>
+                <div style="font-size:0.7rem;color:#a0a0a0;margin-top:4px;">--------------------------------</div>
+                <div style="font-size:0.8rem;color:#f39c12;margin-top:6px;font-weight:600;">${tableNum ? 'MESA ' + tableNum : 'BALCAO'}</div>
+                <div style="font-size:0.7rem;color:#a0a0a0;margin-top:2px;">Comanda: ${o.comandas || '-'}</div>
+                <div style="font-size:0.65rem;color:#666;margin-top:4px;">${fmtDate(o.created_at)}</div>
+            </div>
+            <div style="border-top:1px dashed #444;padding-top:10px;">
+                ${items.map(it => `
+                    <div style="margin-bottom:6px;">
+                        <div style="display:flex;justify-content:space-between;">
+                            <span style="color:#ddd;font-size:0.85rem;">${it.quantity}x ${it.name}</span>
+                        </div>
+                        <div style="text-align:right;color:#f39c12;font-size:0.8rem;">${fmt(it.price * it.quantity)}</div>
+                    </div>
+                `).join('')}
+            </div>
+            <div style="border-top:2px dashed #444;margin-top:12px;padding-top:10px;text-align:center;">
+                <div style="font-size:0.75rem;color:#a0a0a0;">TOTAL</div>
+                <div style="font-size:1.6rem;font-weight:900;color:#2ecc71;margin-top:4px;">${fmt(total)}</div>
+            </div>
+            <div style="text-align:center;margin-top:16px;font-size:0.6rem;color:#555;">
+                Obrigado pela preferencia!
+            </div>
         </div>
     `;
 
@@ -1297,13 +1316,14 @@ function filterByDate(arr, field='created_at') {
 }
 
 async function loadReports() {
-    const [oRes, cRes, pRes, sRes, uRes, tRes] = await Promise.all([
+    const [oRes, cRes, pRes, sRes, uRes, tRes, rRes] = await Promise.all([
         sb.from('orders').select('*').order('created_at', { ascending: false }),
         sb.from('cashflow').select('*').order('created_at', { ascending: false }),
         sb.from('products').select('*'),
         sb.from('stock_history').select('*').order('created_at', { ascending: false }),
         sb.from('users').select('*'),
-        sb.from('tables').select('*')
+        sb.from('tables').select('*'),
+        sb.from('receipts').select('*').order('created_at', { ascending: false })
     ]);
 
     const allOrders = oRes.data || [];
@@ -1312,6 +1332,7 @@ async function loadReports() {
     const allStock = sRes.data || [];
     const allUsers = uRes.data || [];
     const allTables = tRes.data || [];
+    const allReceipts = rRes.data || [];
 
     const filteredOrders = filterByDate(allOrders);
     const filteredCash = filterByDate(allCash);
@@ -1336,7 +1357,7 @@ async function loadReports() {
 
     const totalItems = delivered.reduce((s,o) => s + (o.items||[]).reduce((si,it) => si + it.quantity, 0), 0);
 
-    reportData = { allOrders, filteredOrders, filteredCash, allCash, allProducts, allStock, allUsers, allTables,
+    reportData = { allOrders, filteredOrders, filteredCash, allCash, allProducts, allStock, allUsers, allTables, allReceipts,
         delivered, cancelled, pending, totalRevenue, totalCancelledValue, avgTicket,
         cashIn, cashOut, totalCost, totalItems };
     renderReportTab();
@@ -1351,6 +1372,7 @@ function renderReportTab() {
         case 'staff': el.innerHTML = reportStaff(); break;
         case 'products': el.innerHTML = reportProducts(); break;
         case 'alerts': el.innerHTML = reportAlerts(); break;
+        case 'receipts': el.innerHTML = reportReceipts(); break;
     }
 }
 
@@ -1879,6 +1901,78 @@ function reportAlerts() {
                 <div class="card-body" style="color:#a0a0a0;">${a.desc}</div>
             </div>
         `).join('')}`;
+}
+
+function reportReceipts() {
+    const d = reportData;
+    const receipts = filterByDate(d.allReceipts || []);
+    if (!receipts.length) return '<div class="card"><div class="card-body" style="text-align:center;color:#a0a0a0;"><h2>Nenhum recibo encontrado</h2></div></div>';
+
+    return `
+        <div class="stats-grid" style="margin-bottom:16px;">
+            <div class="stat-card blue"><div class="stat-label">Total de Recibos</div><div class="stat-value">${receipts.length}</div></div>
+            <div class="stat-card green"><div class="stat-label">Valor Total</div><div class="stat-value">${fmt(receipts.reduce((s,r) => s + parseFloat(r.total||0), 0))}</div></div>
+        </div>
+        <div class="card">
+            <div class="card-body" style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead><tr style="border-bottom:2px solid #333;">
+                        <th style="text-align:left;padding:8px;color:#a0a0a0;">Data</th>
+                        <th style="text-align:left;padding:8px;color:#a0a0a0;">Mesa</th>
+                        <th style="text-align:left;padding:8px;color:#a0a0a0;">Comanda</th>
+                        <th style="text-align:left;padding:8px;color:#a0a0a0;">Itens</th>
+                        <th style="text-align:right;padding:8px;color:#a0a0a0;">Total</th>
+                    </tr></thead>
+                    <tbody>
+                        ${receipts.map(r => `
+                            <tr style="border-bottom:1px solid #222;cursor:pointer;" onclick="viewReceipt('${r.id}')">
+                                <td style="padding:8px;">${fmtDate(r.created_at)}</td>
+                                <td style="padding:8px;font-weight:600;">${r.table_number || '-'}</td>
+                                <td style="padding:8px;">${r.comanda_name || '-'}</td>
+                                <td style="padding:8px;color:#a0a0a0;">${(r.items||[]).length} item(s)</td>
+                                <td style="padding:8px;text-align:right;color:#2ecc71;font-weight:600;">${fmt(r.total)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
+function viewReceipt(receiptId) {
+    const r = (reportData.allReceipts || []).find(x => x.id === receiptId);
+    if (!r) return;
+    const items = r.items || [];
+    document.getElementById('comandaModalTitle').textContent = `Recibo: ${r.comanda_name || 'Sem nome'}`;
+    let html = `
+        <div style="font-family:'Courier New',monospace;max-width:320px;margin:0 auto;background:#1a1a2e;border:1px dashed #444;padding:16px;">
+            <div style="text-align:center;margin-bottom:12px;">
+                <div style="font-size:1.2rem;font-weight:900;letter-spacing:2px;color:#e63946;">BONSAI ESPETOS</div>
+                <div style="font-size:0.7rem;color:#a0a0a0;margin-top:4px;">--------------------------------</div>
+                <div style="font-size:0.8rem;color:#f39c12;margin-top:6px;font-weight:600;">${r.table_number ? 'MESA ' + r.table_number : 'BALCAO'}</div>
+                <div style="font-size:0.7rem;color:#a0a0a0;margin-top:2px;">Comanda: ${r.comanda_name || '-'}</div>
+                <div style="font-size:0.65rem;color:#666;margin-top:4px;">${fmtDate(r.created_at)}</div>
+            </div>
+            <div style="border-top:1px dashed #444;padding-top:10px;">
+                ${items.map(it => `
+                    <div style="margin-bottom:6px;">
+                        <div style="display:flex;justify-content:space-between;">
+                            <span style="color:#ddd;font-size:0.85rem;">${it.quantity}x ${it.name}</span>
+                        </div>
+                        <div style="text-align:right;color:#f39c12;font-size:0.8rem;">${fmt(it.price * it.quantity)}</div>
+                    </div>
+                `).join('')}
+            </div>
+            <div style="border-top:2px dashed #444;margin-top:12px;padding-top:10px;text-align:center;">
+                <div style="font-size:0.75rem;color:#a0a0a0;">TOTAL</div>
+                <div style="font-size:1.6rem;font-weight:900;color:#2ecc71;margin-top:4px;">${fmt(r.total)}</div>
+            </div>
+        </div>
+    `;
+    document.getElementById('comandaModalBody').innerHTML = html;
+    document.getElementById('btnComandaEdit').style.display = 'none';
+    document.getElementById('btnComandaReceipt').style.display = 'none';
+    document.getElementById('comandaModal').classList.add('active');
 }
 
 // ========== USUARIOS (APENAS MASTER) ==========
