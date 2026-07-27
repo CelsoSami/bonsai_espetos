@@ -773,8 +773,7 @@ function renderMaintenanceRows() {
                 <span style="color:#a0a0a0;font-size:0.8rem;">Lugares:</span>
                 <input type="number" min="1" max="50" value="${t.capacity}" class="maint-cap" data-id="${t.id}" style="width:60px;padding:6px;text-align:center;border:1px solid #444;border-radius:4px;background:#0d0d0d;color:#f5f5f5;font-size:0.9rem;">
             </div>
-            ${isOccupied ? '<span style="color:#e63946;font-size:0.75rem;margin-left:auto;">OCUPADA</span>' : ''}
-            ${t.table_type === 'virtual' && !isOccupied ? `<button class="btn btn-danger btn-sm" style="margin-left:auto;" onclick="removeMaintenanceRow('${t.id}')">Remover</button>` : ''}
+            ${isOccupied ? '<span style="color:#e63946;font-size:0.75rem;margin-left:auto;">OCUPADA</span>' : `<button class="btn btn-danger btn-sm" style="margin-left:auto;" onclick="removeMaintenanceRow('${t.id}')">Remover</button>`}
         </div>`;
     }).join('');
 
