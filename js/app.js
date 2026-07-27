@@ -153,21 +153,54 @@ async function loadDashboard() {
     const prods = products || [];
     const today = new Date().toISOString().slice(0, 10);
     const todayOrders = all.filter(o => (o.created_at || '').startsWith(today));
-    const pending = all.filter(o => o.status === 'pending').length;
-    const preparing = all.filter(o => o.status === 'preparing').length;
-    const delivered = all.filter(o => o.status === 'delivered').length;
+    const pending = all.filter(o => o.status === 'pending');
+    const preparing = all.filter(o => o.status === 'preparing');
+    const delivered = all.filter(o => o.status === 'delivered');
     const todayRev = todayOrders.filter(o => o.status === 'delivered').reduce((s,o) => s + parseFloat(o.total||0), 0);
-    const totalRev = all.filter(o => o.status === 'delivered').reduce((s,o) => s + parseFloat(o.total||0), 0);
+    const totalRev = delivered.reduce((s,o) => s + parseFloat(o.total||0), 0);
     const occupied = tbls.filter(t => t.status === 'occupied').length;
 
     document.getElementById('statsGrid').innerHTML = `
         <div class="stat-card red"><div class="stat-label">Pedidos Hoje</div><div class="stat-value">${todayOrders.length}</div></div>
-        <div class="stat-card yellow"><div class="stat-label">Pendentes</div><div class="stat-value">${pending}</div></div>
-        <div class="stat-card blue"><div class="stat-label">Preparando</div><div class="stat-value">${preparing}</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Pendentes</div><div class="stat-value">${pending.length}</div></div>
+        <div class="stat-card blue"><div class="stat-label">Preparando</div><div class="stat-value">${preparing.length}</div></div>
         <div class="stat-card green"><div class="stat-label">Receita Hoje</div><div class="stat-value">${fmt(todayRev)}</div></div>
         <div class="stat-card green"><div class="stat-label">Receita Total</div><div class="stat-value">${fmt(totalRev)}</div></div>
         <div class="stat-card red"><div class="stat-label">Mesas Ocupadas</div><div class="stat-value">${occupied}/${tbls.length}</div></div>
     `;
+
+    const activeOrders = [...pending, ...preparing].sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+    document.getElementById('activeOrdersCount').textContent = activeOrders.length;
+
+    if (activeOrders.length === 0) {
+        document.getElementById('activeOrdersBody').innerHTML = '<div style="text-align:center;color:#666;padding:24px;">Nenhum pedido em andamento</div>';
+    } else {
+        document.getElementById('activeOrdersBody').innerHTML = activeOrders.map(o => {
+            const mins = Math.floor((Date.now() - new Date(o.created_at).getTime()) / 60000);
+            const timeStr = mins < 1 ? 'agora' : mins < 60 ? `${mins} min` : `${Math.floor(mins/60)}h ${mins%60}min`;
+            const statusColor = o.status === 'pending' ? '#f39c12' : '#3498db';
+            const statusLabel = o.status === 'pending' ? 'PENDENTE' : 'PREPARANDO';
+            const items = o.items || [];
+            return `
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid #222;${o.status === 'pending' ? 'background:rgba(243,156,18,0.04);' : 'background:rgba(52,152,219,0.04);'}">
+                <div style="min-width:50px;text-align:center;">
+                    <div style="font-size:1.3rem;font-weight:700;color:#e63946;">${o.tables ? o.tables.number : '-'}</div>
+                    <div style="font-size:0.65rem;color:#666;">MESA</div>
+                </div>
+                <div style="flex:1;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <strong style="color:#f5f5f5;">${o.comandas || 'Sem nome'}</strong>
+                        <span style="background:${statusColor};color:${statusColor === '#f39c12' ? '#000' : '#fff'};padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;">${statusLabel}</span>
+                    </div>
+                    <div style="font-size:0.8rem;color:#a0a0a0;">${items.map(it => `${it.quantity}x ${it.name}`).join(', ')}</div>
+                </div>
+                <div style="text-align:right;min-width:80px;">
+                    <div style="font-size:1rem;font-weight:700;color:#f39c12;">${fmt(o.total)}</div>
+                    <div style="font-size:0.75rem;color:${mins > 30 ? '#e63946' : '#666'};${mins > 30 ? 'font-weight:700;' : ''}">${timeStr}</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
 
     document.getElementById('recentOrdersBody').innerHTML = all.slice(0, 10).map(o => `
         <tr>
@@ -186,7 +219,7 @@ async function loadDashboard() {
         type: 'doughnut',
         data: {
             labels: ['Pendentes','Preparando','Entregues'],
-            datasets: [{ data: [pending, preparing, delivered], backgroundColor: ['#f39c12','#3498db','#2ecc71'], borderWidth: 0 }]
+            datasets: [{ data: [pending.length, preparing.length, delivered.length], backgroundColor: ['#f39c12','#3498db','#2ecc71'], borderWidth: 0 }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0a0' } } } }
     });
