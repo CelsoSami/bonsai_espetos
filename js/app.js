@@ -5,7 +5,6 @@ let allProducts = [];
 let allTables = [];
 let allOrders = [];
 let allUsers = [];
-let allCashflow = [];
 let currentOrderItems = [];
 let selectedTable = null;
 let currentOrderFilter = 'all';
@@ -250,8 +249,15 @@ async function loadOrders() {
 function renderOrders() {
     const tblFilter = document.getElementById('orderTableFilter');
     const tableVal = tblFilter ? tblFilter.value : '';
+    const dateFilter = document.getElementById('orderDateFilter');
+    const dateVal = dateFilter ? dateFilter.value : 'today';
+
     let f = currentOrderFilter === 'all' ? allOrders : allOrders.filter(o => o.status === currentOrderFilter);
     if (tableVal) f = f.filter(o => o.table_id === tableVal);
+    if (dateVal === 'today') {
+        const today = new Date().toISOString().slice(0,10);
+        f = f.filter(o => (o.created_at||'').startsWith(today));
+    }
 
     document.getElementById('ordersBody').innerHTML = f.map(o => `
         <tr>
@@ -745,47 +751,190 @@ async function saveTable() {
 
 // ========== FLUXO DE CAIXA ==========
 async function loadCashflow() {
-    const { data } = await sb.from('cashflow').select('*').order('created_at', { ascending: false });
-    allCashflow = data || [];
-    const ent = allCashflow.filter(c => c.type==='entrada').reduce((s,c) => s+c.amount, 0);
-    const sai = allCashflow.filter(c => c.type==='saida').reduce((s,c) => s+c.amount, 0);
+    const [cRes, dcRes, oRes] = await Promise.all([
+        sb.from('cashflow').select('*').order('created_at', { ascending: false }),
+        sb.from('daily_closes').select('*').order('created_at', { ascending: false }).limit(5),
+        sb.from('orders').select('*')
+    ]);
+    const allCash = cRes.data || [];
+    const closes = dcRes.data || [];
+    const allOrders = oRes.data || [];
+
+    const lastClose = closes[0] || null;
+    const sinceDate = lastClose ? lastClose.close_date : null;
+
+    const today = new Date().toISOString().slice(0,10);
+    const todayCash = allCash.filter(c => (c.created_at||'').startsWith(today));
+    const sinceCash = sinceDate ? allCash.filter(c => (c.created_at||'').slice(0,10) >= sinceDate) : todayCash;
+
+    const dayEnt = todayCash.filter(c => c.type==='entrada').reduce((s,c) => s+parseFloat(c.amount||0), 0);
+    const daySai = todayCash.filter(c => c.type==='saida').reduce((s,c) => s+parseFloat(c.amount||0), 0);
+
+    const periodEnt = sinceCash.filter(c => c.type==='entrada').reduce((s,c) => s+parseFloat(c.amount||0), 0);
+    const periodSai = sinceCash.filter(c => c.type==='saida').reduce((s,c) => s+parseFloat(c.amount||0), 0);
+
+    const todayOrders = allOrders.filter(o => (o.created_at||'').startsWith(today) && o.status==='delivered');
+    const todayRevenue = todayOrders.reduce((s,o) => s+parseFloat(o.total||0), 0);
 
     document.getElementById('cashStats').innerHTML = `
-        <div class="stat-card green"><div class="stat-label">Entradas</div><div class="stat-value">${fmt(ent)}</div></div>
-        <div class="stat-card red"><div class="stat-label">Saidas</div><div class="stat-value">${fmt(sai)}</div></div>
-        <div class="stat-card blue"><div class="stat-label">Saldo</div><div class="stat-value">${fmt(ent-sai)}</div></div>
+        <div class="stat-card green"><div class="stat-label">Entradas Hoje</div><div class="stat-value">${fmt(dayEnt)}</div></div>
+        <div class="stat-card red"><div class="stat-label">Saidas Hoje</div><div class="stat-value">${fmt(daySai)}</div></div>
+        <div class="stat-card blue"><div class="stat-label">Saldo Hoje</div><div class="stat-value">${fmt(dayEnt-daySai)}</div></div>
+        <div class="stat-card green"><div class="stat-label">Receita Pedidos Hoje</div><div class="stat-value">${fmt(todayRevenue)}</div></div>
+        ${sinceDate ? `<div class="stat-card yellow"><div class="stat-label">Desde Ultimo Fechamento</div><div class="stat-value">${fmt(periodEnt-periodSai)}</div></div>` : ''}
     `;
 
-    document.getElementById('cashflowBody').innerHTML = allCashflow.map(c => `
+    if (lastClose) {
+        document.getElementById('lastCloseCard').style.display = 'block';
+        document.getElementById('lastCloseBody').innerHTML = `
+            <div style="display:flex;gap:24px;flex-wrap:wrap;">
+                <div><span style="color:#a0a0a0;">Data:</span> <strong>${fmtDate(lastClose.created_at)}</strong></div>
+                <div><span style="color:#a0a0a0;">Fechado por:</span> <strong>${lastClose.closed_by_name}</strong></div>
+                <div><span style="color:#a0a0a0;">Receita:</span> <strong style="color:#2ecc71;">${fmt(lastClose.total_revenue)}</strong></div>
+                <div><span style="color:#a0a0a0;">Entradas:</span> <strong>${fmt(lastClose.total_cash_in)}</strong></div>
+                <div><span style="color:#a0a0a0;">Saidas:</span> <strong>${fmt(lastClose.total_cash_out)}</strong></div>
+                <div><span style="color:#a0a0a0;">Saldo Informado:</span> <strong>${fmt(lastClose.closing_balance)}</strong></div>
+                <div><span style="color:#a0a0a0;">Divergencia:</span> <strong style="color:${Math.abs(lastClose.discrepancy) > 0.01 ? '#e63946' : '#2ecc71'};">${fmt(lastClose.discrepancy)}</strong></div>
+                ${lastClose.notes ? `<div><span style="color:#a0a0a0;">Obs:</span> <strong>${lastClose.notes}</strong></div>` : ''}
+            </div>
+        `;
+    } else {
+        document.getElementById('lastCloseCard').style.display = 'none';
+    }
+
+    document.getElementById('cashflowBody').innerHTML = todayCash.map(c => `
         <tr>
             <td>${fmtDate(c.created_at)}</td>
-            <td>${c.type==='entrada'?'<span style="color:#2ecc71;font-weight:700;">Entrada</span>':'<span style="color:#e63946;font-weight:700;">Saida</span>'}</td>
+            <td>${c.type==='entrada'?'<span style="color:#2ecc71;">Entrada</span>':'<span style="color:#e63946;">Saida</span>'}</td>
             <td>${c.description}</td>
             <td>${c.category||'-'}</td>
-            <td style="color:${c.type==='entrada'?'#2ecc71':'#e63946'};font-weight:700;">${c.type==='entrada'?'+':'-'}${fmt(c.amount)}</td>
+            <td style="color:${c.type==='entrada'?'#2ecc71':'#e63946'};font-weight:700;">${c.type==='entrada'?'+':'-'} ${fmt(c.amount)}</td>
             <td>${c.user_name||'-'}</td>
         </tr>
-    `).join('') || '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma movimentacao</td></tr>';
+    `).join('') || '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma movimentacao hoje</td></tr>';
+}
+
+let closeDayData = {};
+
+async function openCloseDayModal() {
+    const today = new Date().toISOString().slice(0,10);
+    const [cRes, oRes] = await Promise.all([
+        sb.from('cashflow').select('*'),
+        sb.from('orders').select('*')
+    ]);
+    const allCash = cRes.data || [];
+    const allOrders = oRes.data || [];
+
+    const todayCash = allCash.filter(c => (c.created_at||'').startsWith(today));
+    const todayOrders = allOrders.filter(o => (o.created_at||'').startsWith(today));
+    const delivered = todayOrders.filter(o => o.status === 'delivered');
+    const cancelled = todayOrders.filter(o => o.status === 'cancelled');
+
+    const totalRevenue = delivered.reduce((s,o) => s + parseFloat(o.total||0), 0);
+    const totalItems = delivered.reduce((s,o) => s + (o.items||[]).reduce((si,it) => si + it.quantity, 0), 0);
+    const cashIn = todayCash.filter(c => c.type==='entrada').reduce((s,c) => s+parseFloat(c.amount||0), 0);
+    const cashOut = todayCash.filter(c => c.type==='saida').reduce((s,c) => s+parseFloat(c.amount||0), 0);
+    const expectedBalance = cashIn - cashOut;
+
+    closeDayData = { totalRevenue, totalItems, totalOrders: delivered.length, cancelledCount: cancelled.length, cashIn, cashOut, expectedBalance };
+
+    document.getElementById('closeDayBody').innerHTML = `
+        <div style="margin-bottom:16px;color:#a0a0a0;">Resumo do dia <strong style="color:#fff;">${today}</strong>:</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Pedidos Entregues</span><strong>${delivered.length}</strong></div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Pedidos Cancelados</span><strong style="color:#e63946;">${cancelled.length}</strong></div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Itens Vendidos</span><strong>${totalItems}</strong></div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Receita Total</span><strong style="color:#2ecc71;">${fmt(totalRevenue)}</strong></div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Entradas no Caixa</span><strong style="color:#2ecc71;">${fmt(cashIn)}</strong></div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Saidas no Caixa</span><strong style="color:#e63946;">${fmt(cashOut)}</strong></div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Saldo Esperado</span><strong style="color:#f39c12;">${fmt(expectedBalance)}</strong></div>
+        </div>
+        <div class="form-group" style="margin-top:16px;">
+            <label>Saldo em Caixa (contado fisicamente)</label>
+            <input type="number" id="closingBalance" step="0.01" value="${expectedBalance.toFixed(2)}" style="width:100%;padding:10px;border-radius:6px;border:1px solid #333;background:#1a1a1a;color:#f5f5f5;font-size:1rem;">
+        </div>
+        <div id="discrepancyDisplay" style="margin-top:8px;padding:8px;border-radius:6px;text-align:center;font-weight:700;"></div>
+        <div class="form-group" style="margin-top:12px;">
+            <label>Observacoes</label>
+            <textarea id="closingNotes" rows="2" style="width:100%;padding:8px;border-radius:6px;border:1px solid #333;background:#1a1a1a;color:#f5f5f5;resize:vertical;" placeholder="Observacoes do fechamento..."></textarea>
+        </div>
+    `;
+
+    const input = document.getElementById('closingBalance');
+    input.addEventListener('input', () => {
+        const val = parseFloat(input.value) || 0;
+        const disc = val - expectedBalance;
+        const el = document.getElementById('discrepancyDisplay');
+        if (Math.abs(disc) < 0.01) {
+            el.style.background = 'rgba(46,204,113,0.1)';
+            el.style.border = '1px solid #2ecc71';
+            el.style.color = '#2ecc71';
+            el.textContent = 'Caixa batido!';
+        } else {
+            el.style.background = 'rgba(230,57,70,0.1)';
+            el.style.border = '1px solid #e63946';
+            el.style.color = '#e63946';
+            el.textContent = `Divergencia: ${disc >= 0 ? '+' : ''}${fmt(disc)}`;
+        }
+    });
+    input.dispatchEvent(new Event('input'));
+
+    document.getElementById('closeDayModal').classList.add('active');
+}
+
+async function confirmCloseDay() {
+    const balance = parseFloat(document.getElementById('closingBalance').value) || 0;
+    const notes = document.getElementById('closingNotes').value;
+    const today = new Date().toISOString().slice(0,10);
+
+    await sb.from('daily_closes').insert({
+        close_date: today,
+        closed_by: currentUser,
+        closed_by_name: userProfile.name,
+        total_orders: closeDayData.totalOrders,
+        total_revenue: closeDayData.totalRevenue,
+        total_items: closeDayData.totalItems,
+        total_cash_in: closeDayData.cashIn,
+        total_cash_out: closeDayData.cashOut,
+        closing_balance: balance,
+        expected_balance: closeDayData.expectedBalance,
+        discrepancy: balance - closeDayData.expectedBalance,
+        notes
+    });
+
+    closeModal('closeDayModal');
+    showToast('Caixa fechado com sucesso!');
+    loadCashflow();
 }
 
 function openCashModal(type) {
     document.getElementById('cashType').value = type;
-    document.getElementById('cashModalTitle').textContent = type==='entrada'?'Nova Entrada':'Nova Saida';
+    const titleEl = document.getElementById('cashModalTitle');
+    const infoEl = document.getElementById('cashCorrecaoInfo');
+    if (type === 'entrada') { titleEl.textContent = 'Nova Entrada'; infoEl.style.display = 'none'; }
+    else if (type === 'saida') { titleEl.textContent = 'Nova Saida'; infoEl.style.display = 'none'; }
+    else { titleEl.textContent = 'Correcao de Caixa'; infoEl.style.display = 'block'; }
     document.getElementById('cashDescription').value = '';
     document.getElementById('cashAmount').value = '';
-    document.getElementById('cashCategory').value = '';
+    document.getElementById('cashCategory').value = type === 'correcao' ? 'Correcao' : '';
     document.getElementById('cashModal').classList.add('active');
 }
 
 async function saveCashflow() {
-    await sb.from('cashflow').insert({
-        type: document.getElementById('cashType').value,
-        description: document.getElementById('cashDescription').value,
-        amount: parseFloat(document.getElementById('cashAmount').value),
-        category: document.getElementById('cashCategory').value,
-        user_id: currentUser,
-        user_name: userProfile.name
-    });
+    const type = document.getElementById('cashType').value;
+    const amount = parseFloat(document.getElementById('cashAmount').value);
+    const desc = document.getElementById('cashDescription').value;
+    const cat = document.getElementById('cashCategory').value;
+
+    if (type === 'correcao') {
+        if (amount > 0) {
+            await sb.from('cashflow').insert({ type: 'entrada', description: '[CORRECAO] ' + desc, amount, category: cat || 'Correcao', user_id: currentUser, user_name: userProfile.name });
+        } else {
+            await sb.from('cashflow').insert({ type: 'saida', description: '[CORRECAO] ' + desc, amount: Math.abs(amount), category: cat || 'Correcao', user_id: currentUser, user_name: userProfile.name });
+        }
+    } else {
+        await sb.from('cashflow').insert({ type, description: desc, amount, category: cat, user_id: currentUser, user_name: userProfile.name });
+    }
     closeModal('cashModal');
     showToast('Movimentacao registrada!');
     loadCashflow();
