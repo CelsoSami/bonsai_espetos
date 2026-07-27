@@ -1087,8 +1087,17 @@ async function openComandaReceipt() {
 
 async function fecharComanda() {
     if (!currentComanda) return;
+    const tableId = currentComanda.table_id;
     await sb.from('orders').update({ status: 'delivered' }).eq('id', currentComanda.id);
     await sb.from('kitchen_orders').update({ status: 'cancelled' }).eq('order_id', currentComanda.id).in('status', ['pending']);
+
+    if (tableId) {
+        const { data: others } = await sb.from('orders').select('id').eq('table_id', tableId).in('status', ['pending', 'preparing']);
+        if (!others || others.length === 0) {
+            await sb.from('tables').update({ status: 'available', occupied_at: null }).eq('id', tableId);
+        }
+    }
+
     closeModal('comandaModal');
     showToast('Comanda fechada!');
     loadTables();
