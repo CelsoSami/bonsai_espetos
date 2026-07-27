@@ -645,7 +645,11 @@ function renderTablesGrid() {
                 </div>
                 <div class="card-body">
                     <div style="margin-bottom:8px;">
-                        ${tableOrders.map(o => `<span style="display:inline-block;background:#1e1e1e;border:1px solid #333;border-radius:12px;padding:3px 10px;font-size:0.75rem;margin:2px;color:#e63946;font-weight:600;">${o.comandas || 'Comanda'}</span>`).join('')}
+                        ${tableOrders.map(o => {
+                            const statusColor = o.status === 'delivered' ? '#2ecc71' : o.status === 'cancelled' ? '#666' : '#e63946';
+                            const cursor = o.status === 'pending' || o.status === 'preparing' ? 'pointer' : 'default';
+                            return `<span onclick="openComanda('${o.id}')" style="display:inline-block;background:#1e1e1e;border:1px solid ${statusColor};border-radius:12px;padding:3px 10px;font-size:0.75rem;margin:2px;color:${statusColor};font-weight:600;cursor:${cursor};transition:all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">${o.comandas || 'Comanda'} ${o.status==='delivered'?'✓':o.status==='cancelled'?'✗':''}</span>`;
+                        }).join('')}
                     </div>
                     <div style="display:flex;gap:16px;margin-bottom:12px;">
                         <div style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:10px 16px;text-align:center;flex:1;">
@@ -852,6 +856,132 @@ function filterTables(f, el) {
     document.querySelectorAll('#section-tables .tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
     renderTablesGrid();
+}
+
+// ========== COMANDA ==========
+let currentComanda = null;
+let comandaAddingProduct = false;
+
+async function openComanda(orderId) {
+    const { data: order } = await sb.from('orders').select('*').eq('id', orderId).single();
+    if (!order) return;
+    currentComanda = order;
+    comandaAddingProduct = false;
+    renderComandaModal();
+    document.getElementById('comandaModal').classList.add('active');
+}
+
+function renderComandaModal() {
+    const o = currentComanda;
+    if (!o) return;
+    const isActive = o.status === 'pending' || o.status === 'preparing';
+    document.getElementById('comandaModalTitle').textContent = `Comanda: ${o.comandas || 'Sem nome'}`;
+
+    const items = o.items || [];
+    const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
+
+    let html = `
+        <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+            ${statusBadge(o.status)}
+            <span style="color:#a0a0a0;font-size:0.8rem;">${fmtDate(o.created_at)}</span>
+        </div>
+        <div style="border-top:1px solid #333;padding-top:12px;">
+            ${items.map((it, i) => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #222;">
+                    <div>
+                        <strong>${it.quantity}x ${it.name}</strong>
+                        <span style="color:#a0a0a0;margin-left:8px;">${fmt(it.price)}</span>
+                    </div>
+                    ${isActive ? `<button class="btn btn-danger btn-sm" onclick="removeItemFromComanda(${i})" style="padding:4px 8px;font-size:0.7rem;">Remover</button>` : ''}
+                </div>
+            `).join('')}
+            ${items.length === 0 ? '<div style="color:#666;text-align:center;padding:16px;">Nenhum item</div>' : ''}
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #333;display:flex;justify-content:space-between;">
+            <strong style="font-size:1rem;">TOTAL</strong>
+            <strong style="font-size:1.2rem;color:#e63946;">${fmt(total)}</strong>
+        </div>
+    `;
+
+    if (comandaAddingProduct && isActive) {
+        html += `
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #333;">
+            <div style="font-size:0.75rem;text-transform:uppercase;color:#a0a0a0;margin-bottom:8px;">Adicionar Produto</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;">
+                ${allProducts.filter(p => p.active).map(p => `
+                    <button class="btn btn-secondary btn-sm" style="text-align:left;padding:8px;font-size:0.8rem;" onclick="addItemToComanda('${p.id}',${JSON.stringify(p.name).replace(/"/g,'&quot;')},${p.price})">
+                        ${p.name}<br><span style="color:#2ecc71;">${fmt(p.price)}</span>
+                    </button>
+                `).join('')}
+            </div>
+        </div>`;
+    }
+
+    document.getElementById('comandaModalBody').innerHTML = html;
+    document.querySelector('#comandaModal .btn-primary').style.display = isActive ? '' : 'none';
+    document.querySelector('#comandaModal .btn-success').style.display = isActive ? '' : 'none';
+}
+
+function toggleAddProductToComanda() {
+    comandaAddingProduct = !comandaAddingProduct;
+    renderComandaModal();
+}
+
+async function addItemToComanda(pid, name, price) {
+    if (!currentComanda) return;
+    const items = currentComanda.items || [];
+    const existing = items.find(it => it.product_id === pid);
+    if (existing) existing.quantity++;
+    else items.push({ product_id: pid, name, price, quantity: 1 });
+
+    const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
+    await sb.from('orders').update({ items, total }).eq('id', currentComanda.id);
+
+    const { data: updated } = await sb.from('orders').select('*').eq('id', currentComanda.id).single();
+    currentComanda = updated;
+
+    const prod = allProducts.find(p => p.id === pid);
+    if (prod && prod.station) {
+        await sb.from('kitchen_orders').insert({
+            order_id: currentComanda.id,
+            table_number: currentComanda.table_id ? allTables.find(t => t.id === currentComanda.table_id)?.number || 0 : 0,
+            comanda_name: currentComanda.comandas || 'Comanda',
+            product_name: name,
+            quantity: 1,
+            station: prod.station,
+            status: 'pending'
+        });
+    }
+
+    renderComandaModal();
+}
+
+async function removeItemFromComanda(idx) {
+    if (!currentComanda) return;
+    const items = currentComanda.items || [];
+    if (idx < 0 || idx >= items.length) return;
+    items.splice(idx, 1);
+    const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
+    await sb.from('orders').update({ items, total }).eq('id', currentComanda.id);
+    const { data: updated } = await sb.from('orders').select('*').eq('id', currentComanda.id).single();
+    currentComanda = updated;
+    renderComandaModal();
+}
+
+async function fecharComanda() {
+    if (!currentComanda) return;
+    await sb.from('orders').update({ status: 'delivered' }).eq('id', currentComanda.id);
+    await sb.from('kitchen_orders').update({ status: 'cancelled' }).eq('order_id', currentComanda.id).in('status', ['pending']);
+
+    const { data: others } = await sb.from('orders').select('id').eq('table_id', currentComanda.table_id).in('status', ['pending','preparing']);
+    if (!others || others.length === 0) {
+        await sb.from('tables').update({ status: 'available', occupied_at: null }).eq('id', currentComanda.table_id);
+    }
+
+    closeModal('comandaModal');
+    showToast('Comanda fechada!');
+    loadTables();
+    loadOrders();
 }
 
 // ========== FLUXO DE CAIXA ==========
