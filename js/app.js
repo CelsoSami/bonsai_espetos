@@ -618,7 +618,8 @@ function renderTablesGrid() {
         const typeLabel = t.table_type === 'virtual' ? '<span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;margin-left:6px;">VIRTUAL</span>' : '<span style="background:#333;color:#a0a0a0;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;margin-left:6px;">FIXA</span>';
 
         if (t.status === 'occupied') {
-            const occupiedSince = t.occupied_at || (pendingOrders.length > 0 ? pendingOrders[0].created_at : null);
+            const openOrders = tableOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
+            const occupiedSince = t.occupied_at || (openOrders.length > 0 ? openOrders[0].created_at : null);
             return `
             <div class="card" style="border-color:#e63946;">
                 <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
@@ -636,19 +637,18 @@ function renderTablesGrid() {
                 </div>
                 <div class="card-body">
                     <div style="margin-bottom:8px;">
-                        ${tableOrders.map(o => {
-                            const statusColor = o.status === 'delivered' ? '#2ecc71' : o.status === 'cancelled' ? '#666' : '#e63946';
-                            const cursor = o.status === 'pending' || o.status === 'preparing' ? 'pointer' : 'default';
-                            return `<span onclick="openComanda('${o.id}')" style="display:inline-block;background:#1e1e1e;border:1px solid ${statusColor};border-radius:12px;padding:3px 10px;font-size:0.75rem;margin:2px;color:${statusColor};font-weight:600;cursor:${cursor};transition:all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">${o.comandas || 'Comanda'} ${o.status==='delivered'?'✓':o.status==='cancelled'?'✗':''}</span>`;
-                        }).join('')}
+                        ${openOrders.length > 0 ? openOrders.map(o => {
+                            const statusColor = o.status === 'preparing' ? '#f39c12' : '#e63946';
+                            return `<span onclick="openComanda('${o.id}')" style="display:inline-block;background:#1e1e1e;border:1px solid ${statusColor};border-radius:12px;padding:3px 10px;font-size:0.75rem;margin:2px;color:${statusColor};font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">${o.comandas || 'Comanda'}</span>`;
+                        }).join('') : '<div style="color:#666;text-align:center;padding:8px;">Nenhuma comanda aberta</div>'}
                     </div>
                     <div style="display:flex;gap:16px;margin-bottom:12px;">
                         <div style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:10px 16px;text-align:center;flex:1;">
-                            <div style="font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;">Pendente</div>
+                            <div style="font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;">Em Aberto</div>
                             <div style="font-size:1.2rem;font-weight:700;color:#f39c12;">${fmt(totalPending)}</div>
                         </div>
                         <div style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:10px 16px;text-align:center;flex:1;">
-                            <div style="font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;">Entregue</div>
+                            <div style="font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;">Ja Pago</div>
                             <div style="font-size:1.2rem;font-weight:700;color:#2ecc71;">${fmt(totalSpent)}</div>
                         </div>
                     </div>
@@ -872,6 +872,7 @@ function renderComandaDetails() {
 
     document.getElementById('btnComandaEdit').style.display = '';
     document.getElementById('btnComandaReceipt').style.display = items.length ? '' : 'none';
+    document.getElementById('btnComandaPay').style.display = (isActive && items.length) ? '' : 'none';
 
     let html = `
         <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
@@ -944,6 +945,7 @@ function renderComandaEdit() {
 
     document.getElementById('btnComandaEdit').style.display = 'none';
     document.getElementById('btnComandaReceipt').style.display = 'none';
+    document.getElementById('btnComandaPay').style.display = 'none';
 
     const footer = document.querySelector('#comandaModal .modal-footer');
     if (!footer.querySelector('#comandaEditSave')) {
@@ -1083,9 +1085,8 @@ async function openComandaReceipt() {
     document.getElementById('comandaModalBody').innerHTML = html;
     document.getElementById('btnComandaEdit').style.display = 'none';
     document.getElementById('btnComandaReceipt').style.display = 'none';
-}
-
-async function fecharComanda() {
+    document.getElementById('btnComandaPay').style.display = 'none';
+}async function fecharComanda() {
     if (!currentComanda) return;
     const tableId = currentComanda.table_id;
     await sb.from('orders').update({ status: 'delivered' }).eq('id', currentComanda.id);

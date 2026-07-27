@@ -501,7 +501,10 @@
             <div class="modal-body" id="comandaModalBody" style="max-height:60vh;overflow-y:auto;"></div>
             <div class="modal-footer" style="display:flex;justify-content:space-between;gap:8px;">
                 <button class="btn btn-success btn-sm" onclick="openComandaEdit()" id="btnComandaEdit">Editar Comanda</button>
-                <button class="btn btn-primary btn-sm" onclick="openComandaReceipt()" id="btnComandaReceipt">Fechamento de Conta</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary btn-sm" onclick="openComandaReceipt()" id="btnComandaReceipt">Fechamento de Conta</button>
+                    <button class="btn btn-danger btn-sm" onclick="fecharComanda()" id="btnComandaPay">Comanda Paga</button>
+                </div>
             </div>
         </div>
     </div>
