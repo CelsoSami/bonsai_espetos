@@ -162,8 +162,7 @@ async function loadDashboard() {
 
     document.getElementById('statsGrid').innerHTML = `
         <div class="stat-card red"><div class="stat-label">Pedidos Hoje</div><div class="stat-value">${todayOrders.length}</div></div>
-        <div class="stat-card yellow"><div class="stat-label">Pendentes</div><div class="stat-value">${pending.length}</div></div>
-        <div class="stat-card blue"><div class="stat-label">Preparando</div><div class="stat-value">${preparing.length}</div></div>
+        <div class="stat-card blue"><div class="stat-label">Em Andamento</div><div class="stat-value">${preparing.length}</div></div>
         <div class="stat-card green"><div class="stat-label">Receita Hoje</div><div class="stat-value">${fmt(todayRev)}</div></div>
         <div class="stat-card green"><div class="stat-label">Receita Total</div><div class="stat-value">${fmt(totalRev)}</div></div>
         <div class="stat-card red"><div class="stat-label">Mesas Ocupadas</div><div class="stat-value">${occupied}/${tbls.length}</div></div>
@@ -218,8 +217,8 @@ async function loadDashboard() {
     performanceChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['Pendentes','Preparando','Entregues'],
-            datasets: [{ data: [pending.length, preparing.length, delivered.length], backgroundColor: ['#f39c12','#3498db','#2ecc71'], borderWidth: 0 }]
+            labels: ['Em Andamento','Entregues','Cancelados'],
+            datasets: [{ data: [preparing.length, delivered.length, all.filter(o => o.status === 'cancelled').length], backgroundColor: ['#3498db','#2ecc71','#666'], borderWidth: 0 }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0a0' } } } }
     });
@@ -303,7 +302,6 @@ function renderOrders() {
             <td>${o.user_name || '-'}</td>
             <td>
                 <div class="btn-group">
-                ${o.status==='pending'?`<button class="btn btn-warning btn-xs" onclick="updateOrderStatus('${o.id}','preparing')">Preparar</button>`:''}
                 ${o.status==='preparing'?`<button class="btn btn-success btn-xs" onclick="updateOrderStatus('${o.id}','delivered')">Entregar</button>`:''}
                 ${o.status!=='delivered'&&o.status!=='cancelled'?`<button class="btn btn-danger btn-xs" onclick="updateOrderStatus('${o.id}','cancelled')">Cancelar</button>`:''}
                 </div>
@@ -443,7 +441,7 @@ async function submitOrder() {
         comandas: document.getElementById('comandaName').value || 'Comanda',
         items: currentOrderItems,
         total,
-        status: 'pending',
+        status: 'preparing',
         user_id: currentUser,
         user_name: userProfile.name
     }).select().single();
