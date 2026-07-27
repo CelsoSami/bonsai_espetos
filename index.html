@@ -168,7 +168,6 @@
                                     <option value="today">Hoje</option>
                                     <option value="all">Todos</option>
                                 </select>
-                                <button class="btn btn-primary btn-sm" onclick="openNewOrderModal()">+ Novo Pedido</button>
                             </div>
                         </div>
                         <div class="tabs">
@@ -246,7 +245,15 @@
                     <div id="section-tables" class="section" style="display:none;">
                         <div class="page-header">
                             <h1>Mesas</h1>
-                            <button class="btn btn-primary btn-sm" onclick="openTableModal()">+ Nova Mesa</button>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-primary btn-sm" onclick="openTableModal('fisica')">+ Mesa Fixa</button>
+                                <button class="btn btn-warning btn-sm" onclick="openTableModal('virtual')">+ Mesa Virtual</button>
+                            </div>
+                        </div>
+                        <div class="tabs" style="margin-bottom:12px;">
+                            <button class="tab active" onclick="filterTables('all',this)">Todas</button>
+                            <button class="tab" onclick="filterTables('fisica',this)">Fixas</button>
+                            <button class="tab" onclick="filterTables('virtual',this)">Virtuais</button>
                         </div>
                         <div id="tablesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px;padding:0 0 24px 0;"></div>
                     </div>
@@ -436,10 +443,12 @@
     <div class="modal-overlay" id="tableModal">
         <div class="modal">
             <div class="modal-header">
-                <h2>Nova Mesa</h2>
+                <h2 id="tableModalTitle">Nova Mesa</h2>
                 <button class="modal-close" onclick="closeModal('tableModal')">&times;</button>
             </div>
             <div class="modal-body">
+                <input type="hidden" id="tableType">
+                <div id="tableTypeInfo" style="margin-bottom:12px;padding:8px;border-radius:6px;font-size:0.85rem;"></div>
                 <div class="grid-2">
                     <div class="form-group"><label>Numero</label><input type="number" id="tableNumber" min="1" required></div>
                     <div class="form-group"><label>Capacidade</label><input type="number" id="tableCapacity" min="1" value="4"></div>

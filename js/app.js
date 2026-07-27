@@ -604,18 +604,27 @@ async function loadTables() {
         sb.from('orders').select('*, tables(number)').order('created_at', { ascending: true })
     ]);
     allTables = (tRes.data || []).sort((a,b) => a.number - b.number);
-    const allOrdersList = oRes.data || [];
+    allOrdersCache = oRes.data || [];
 
     Object.keys(tableTimers).forEach(k => clearInterval(tableTimers[k]));
     tableTimers = {};
 
-    document.getElementById('tablesGrid').innerHTML = allTables.map(t => {
-        const tableOrders = allOrdersList.filter(o => o.table_id === t.id);
+    renderTablesGrid();
+}
+
+let allOrdersCache = [];
+
+function renderTablesGrid() {
+    const filtered = currentTableFilter === 'all' ? allTables : allTables.filter(t => (t.table_type || 'fisica') === currentTableFilter);
+
+    document.getElementById('tablesGrid').innerHTML = filtered.map(t => {
+        const tableOrders = allOrdersCache.filter(o => o.table_id === t.id);
         const pendingOrders = tableOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
         const totalSpent = tableOrders.filter(o => o.status === 'delivered').reduce((s,o) => s + parseFloat(o.total||0), 0);
         const totalPending = pendingOrders.reduce((s,o) => s + parseFloat(o.total||0), 0);
         const allItems = tableOrders.flatMap(o => (o.items||[]).map(it => ({...it, orderStatus: o.status, orderId: o.id})));
         const timerId = `timer-${t.id}`;
+        const typeLabel = t.table_type === 'virtual' ? '<span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;margin-left:6px;">VIRTUAL</span>' : '<span style="background:#333;color:#a0a0a0;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;margin-left:6px;">FIXA</span>';
 
         if (t.status === 'occupied') {
             const occupiedSince = t.occupied_at || (pendingOrders.length > 0 ? pendingOrders[0].created_at : null);
@@ -623,7 +632,7 @@ async function loadTables() {
             <div class="card" style="border-color:#e63946;">
                 <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                        <h2 style="margin:0;">Mesa ${t.number} <span style="font-size:0.75rem;color:#a0a0a0;">${t.capacity} lugares</span></h2>
+                        <h2 style="margin:0;">Mesa ${t.number} <span style="font-size:0.75rem;color:#a0a0a0;">${t.capacity} lugares</span>${typeLabel}</h2>
                         <div style="font-size:0.85rem;color:#f39c12;margin-top:4px;">
                             Ocupada ha: <strong id="${timerId}">--:--</strong>
                             ${occupiedSince ? `<span style="color:#666;font-size:0.75rem;margin-left:8px;">desde ${fmtDate(occupiedSince)}</span>` : ''}
@@ -632,6 +641,7 @@ async function loadTables() {
                     <div style="display:flex;gap:8px;">
                         <button class="btn btn-primary btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">+ Pedido</button>
                         <button class="btn btn-success btn-sm" onclick="closeTable('${t.id}')">Liberar</button>
+                        ${t.table_type === 'virtual' ? `<button class="btn btn-danger btn-sm" onclick="deleteTable('${t.id}','virtual')">X</button>` : ''}
                     </div>
                 </div>
                 <div class="card-body">
@@ -665,18 +675,21 @@ async function loadTables() {
             <div class="card" style="border-color:#333;">
                 <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                        <h2 style="margin:0;">Mesa ${t.number} <span style="font-size:0.75rem;color:#a0a0a0;">${t.capacity} lugares</span></h2>
+                        <h2 style="margin:0;">Mesa ${t.number} <span style="font-size:0.75rem;color:#a0a0a0;">${t.capacity} lugares</span>${typeLabel}</h2>
                         <div style="font-size:0.85rem;color:#2ecc71;margin-top:4px;">Disponivel</div>
                     </div>
-                    <button class="btn btn-warning btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">Ocupar</button>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-warning btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">Ocupar</button>
+                        ${t.table_type === 'virtual' ? `<button class="btn btn-danger btn-sm" onclick="deleteTable('${t.id}','virtual')">X</button>` : ''}
+                    </div>
                 </div>
             </div>`;
         }
-    }).join('');
+    }).join('') || '<div style="color:#666;text-align:center;grid-column:1/-1;padding:40px;">Nenhuma mesa encontrada</div>';
 
     allTables.forEach(t => {
         if (t.status === 'occupied') {
-            const occupiedSince = t.occupied_at || (allOrdersList.filter(o => o.table_id === t.id && (o.status === 'pending' || o.status === 'preparing')).length > 0 ? allOrdersList.filter(o => o.table_id === t.id)[0]?.created_at : null);
+            const occupiedSince = t.occupied_at || (allOrdersCache.filter(o => o.table_id === t.id && (o.status === 'pending' || o.status === 'preparing')).length > 0 ? allOrdersCache.filter(o => o.table_id === t.id)[0]?.created_at : null);
             if (occupiedSince) {
                 const start = new Date(occupiedSince).getTime();
                 const el = document.getElementById(`timer-${t.id}`);
@@ -737,8 +750,23 @@ async function closeTable(id) {
     loadTables();
 }
 
-function openTableModal() {
-    document.getElementById('tableNumber').value = '';
+function openTableModal(type) {
+    document.getElementById('tableType').value = type;
+    const titleEl = document.getElementById('tableModalTitle');
+    const infoEl = document.getElementById('tableTypeInfo');
+    if (type === 'virtual') {
+        titleEl.textContent = 'Nova Mesa Virtual';
+        infoEl.style.display = 'block';
+        infoEl.style.background = 'rgba(243,156,18,0.1)';
+        infoEl.style.border = '1px solid #f39c12';
+        infoEl.style.color = '#f39c12';
+        infoEl.textContent = 'Mesas virtuais podem ser criadas e removidas livremente durante a noite.';
+    } else {
+        titleEl.textContent = 'Nova Mesa Fixa';
+        infoEl.style.display = 'none';
+    }
+    const maxNum = allTables.reduce((m, t) => Math.max(m, t.number || 0), 0);
+    document.getElementById('tableNumber').value = maxNum + 1;
     document.getElementById('tableCapacity').value = 4;
     document.getElementById('tableModal').classList.add('active');
 }
@@ -747,10 +775,28 @@ async function saveTable() {
     await sb.from('tables').insert({
         number: parseInt(document.getElementById('tableNumber').value),
         capacity: parseInt(document.getElementById('tableCapacity').value),
+        table_type: document.getElementById('tableType').value || 'fisica',
         status: 'available'
     });
     closeModal('tableModal');
     showToast('Mesa criada!');
+    loadTables();
+}
+
+let currentTableFilter = 'all';
+
+function filterTables(f, el) {
+    currentTableFilter = f;
+    document.querySelectorAll('#section-tables .tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    renderTablesGrid();
+}
+
+async function deleteTable(id, type) {
+    if (type !== 'virtual') { showToast('Apenas mesas virtuais podem ser excluidas', 'error'); return; }
+    if (!confirm('Excluir esta mesa virtual?')) return;
+    await sb.from('tables').delete().eq('id', id);
+    showToast('Mesa excluida!');
     loadTables();
 }
 
