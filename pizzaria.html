@@ -87,6 +87,7 @@
                             <div class="table-num">Mesa ${item.table_number}</div>
                             <div class="time">${ago} min</div>
                         </div>
+                        <div style="font-size:0.85rem;color:#9b59b6;font-weight:600;margin-bottom:4px;">${item.comanda_name || ''}</div>
                         <div class="product">${item.product_name}</div>
                         <div class="qty">${item.quantity}x</div>
                         <button class="btn-ready" onclick="markReady('${item.id}')">PRONTO</button>

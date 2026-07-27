@@ -173,7 +173,7 @@ async function loadDashboard() {
         <tr>
             <td>#${(o.id||'').slice(0,8)}</td>
             <td>${o.tables ? o.tables.number : '-'}</td>
-            <td>${o.comandas || 1}</td>
+            <td style="font-weight:600;">${o.comandas || '-'}</td>
             <td>${fmt(o.total)}</td>
             <td>${statusBadge(o.status)}</td>
             <td>${fmtDate(o.created_at)}</td>
@@ -263,7 +263,7 @@ function renderOrders() {
         <tr>
             <td>#${(o.id||'').slice(0,8)}</td>
             <td>${o.tables ? o.tables.number : '-'}</td>
-            <td>${o.comandas || 1}</td>
+            <td><strong>${o.comandas || 'Comanda'}</strong></td>
             <td><button class="btn btn-secondary btn-sm" onclick="viewOrderDetail('${o.id}')">${(o.items||[]).length} itens</button></td>
             <td>${fmt(o.total)}</td>
             <td>${statusBadge(o.status)}</td>
@@ -294,7 +294,7 @@ function viewOrderDetail(id) {
     document.getElementById('orderDetailBody').innerHTML = `
         <div style="margin-bottom:16px;">
             <span style="color:#a0a0a0;">Status: </span>${statusBadge(o.status)}
-            <span style="margin-left:16px;color:#a0a0a0;">Comandas: </span><strong>${o.comandas || 1}</strong>
+            <span style="margin-left:16px;color:#a0a0a0;">Comanda: </span><strong>${o.comandas || '-'}</strong>
             <span style="margin-left:16px;color:#a0a0a0;">Atendente: </span><strong>${o.user_name || '-'}</strong>
         </div>
         <table style="width:100%;border-collapse:collapse;">
@@ -347,7 +347,7 @@ async function updateOrderStatus(id, status) {
 function openNewOrderModal() {
     selectedTable = null;
     currentOrderItems = [];
-    document.getElementById('comandaCount').value = 1;
+    document.getElementById('comandaName').value = '';
     document.getElementById('orderItems').innerHTML = '';
     document.getElementById('orderTotal').textContent = 'R$ 0,00';
 
@@ -414,7 +414,7 @@ async function submitOrder() {
     const total = currentOrderItems.reduce((s,i) => s + i.price * i.quantity, 0);
     const { data: newOrder } = await sb.from('orders').insert({
         table_id: selectedTable.id,
-        comandas: parseInt(document.getElementById('comandaCount').value) || 1,
+        comandas: document.getElementById('comandaName').value || 'Comanda',
         items: currentOrderItems,
         total,
         status: 'pending',
@@ -423,6 +423,7 @@ async function submitOrder() {
     }).select().single();
     await sb.from('tables').update({ status: 'occupied', occupied_at: new Date().toISOString() }).eq('id', selectedTable.id);
     if (newOrder) {
+        const comandaName = document.getElementById('comandaName').value || 'Comanda';
         const stationItems = [];
         for (const item of currentOrderItems) {
             const prod = allProducts.find(p => p.id === item.product_id);
@@ -431,6 +432,7 @@ async function submitOrder() {
                     stationItems.push({
                         order_id: newOrder.id,
                         table_number: selectedTable.number,
+                        comanda_name: comandaName,
                         product_name: item.name,
                         quantity: 1,
                         station: prod.station,
@@ -633,6 +635,9 @@ async function loadTables() {
                     </div>
                 </div>
                 <div class="card-body">
+                    <div style="margin-bottom:8px;">
+                        ${tableOrders.map(o => `<span style="display:inline-block;background:#1e1e1e;border:1px solid #333;border-radius:12px;padding:3px 10px;font-size:0.75rem;margin:2px;color:#e63946;font-weight:600;">${o.comandas || 'Comanda'}</span>`).join('')}
+                    </div>
                     <div style="display:flex;gap:16px;margin-bottom:12px;">
                         <div style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:10px 16px;text-align:center;flex:1;">
                             <div style="font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;">Pendente</div>
@@ -693,7 +698,7 @@ async function loadTables() {
 function openNewOrderForTable(tableId, tableNumber) {
     selectedTable = allTables.find(t => t.id === tableId) || { id: tableId, number: tableNumber };
     currentOrderItems = [];
-    document.getElementById('comandaCount').value = 1;
+    document.getElementById('comandaName').value = '';
     document.getElementById('orderItems').innerHTML = '';
     document.getElementById('orderTotal').textContent = 'R$ 0,00';
 
