@@ -246,8 +246,7 @@
                         <div class="page-header">
                             <h1>Mesas</h1>
                             <div style="display:flex;gap:8px;">
-                                <button class="btn btn-primary btn-sm" onclick="openTableModal('fisica')">+ Mesa Fixa</button>
-                                <button class="btn btn-warning btn-sm" onclick="openTableModal('virtual')">+ Mesa Virtual</button>
+                                <button class="btn btn-warning btn-sm" onclick="openMaintenanceModal()">Manutencao</button>
                             </div>
                         </div>
                         <div class="tabs" style="margin-bottom:12px;">
@@ -441,22 +440,15 @@
     </div>
 
     <div class="modal-overlay" id="tableModal">
-        <div class="modal">
+        <div class="modal" style="max-width:650px;">
             <div class="modal-header">
-                <h2 id="tableModalTitle">Nova Mesa</h2>
+                <h2>Manutencao de Mesas</h2>
                 <button class="modal-close" onclick="closeModal('tableModal')">&times;</button>
             </div>
-            <div class="modal-body">
-                <input type="hidden" id="tableType">
-                <div id="tableTypeInfo" style="margin-bottom:12px;padding:8px;border-radius:6px;font-size:0.85rem;"></div>
-                <div class="grid-2">
-                    <div class="form-group"><label>Numero</label><input type="number" id="tableNumber" min="1" required></div>
-                    <div class="form-group"><label>Capacidade</label><input type="number" id="tableCapacity" min="1" value="4"></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('tableModal')">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveTable()">Salvar</button>
+            <div class="modal-body" style="max-height:60vh;overflow-y:auto;" id="maintenanceBody"></div>
+            <div class="modal-footer" style="display:flex;justify-content:space-between;">
+                <button class="btn btn-primary btn-sm" onclick="addNewTableRow()">+ Adicionar Mesa</button>
+                <button class="btn btn-success" onclick="saveMaintenance()">Salvar Alteracoes</button>
             </div>
         </div>
     </div>

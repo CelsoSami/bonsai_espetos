@@ -641,7 +641,6 @@ function renderTablesGrid() {
                     <div style="display:flex;gap:8px;">
                         <button class="btn btn-primary btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">+ Pedido</button>
                         <button class="btn btn-success btn-sm" onclick="closeTable('${t.id}')">Liberar</button>
-                        ${t.table_type === 'virtual' ? `<button class="btn btn-danger btn-sm" onclick="deleteTable('${t.id}','virtual')">X</button>` : ''}
                     </div>
                 </div>
                 <div class="card-body">
@@ -680,7 +679,6 @@ function renderTablesGrid() {
                     </div>
                     <div style="display:flex;gap:8px;">
                         <button class="btn btn-warning btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">Ocupar</button>
-                        ${t.table_type === 'virtual' ? `<button class="btn btn-danger btn-sm" onclick="deleteTable('${t.id}','virtual')">X</button>` : ''}
                     </div>
                 </div>
             </div>`;
@@ -750,36 +748,101 @@ async function closeTable(id) {
     loadTables();
 }
 
-function openTableModal(type) {
-    document.getElementById('tableType').value = type;
-    const titleEl = document.getElementById('tableModalTitle');
-    const infoEl = document.getElementById('tableTypeInfo');
-    if (type === 'virtual') {
-        titleEl.textContent = 'Nova Mesa Virtual';
-        infoEl.style.display = 'block';
-        infoEl.style.background = 'rgba(243,156,18,0.1)';
-        infoEl.style.border = '1px solid #f39c12';
-        infoEl.style.color = '#f39c12';
-        infoEl.textContent = 'Mesas virtuais podem ser criadas e removidas livremente durante a noite.';
-    } else {
-        titleEl.textContent = 'Nova Mesa Fixa';
-        infoEl.style.display = 'none';
-    }
-    const maxNum = allTables.reduce((m, t) => Math.max(m, t.number || 0), 0);
-    document.getElementById('tableNumber').value = maxNum + 1;
-    document.getElementById('tableCapacity').value = 4;
+function openTableModal() {}
+
+let maintenanceNewTables = [];
+
+function openMaintenanceModal() {
+    maintenanceNewTables = [];
+    renderMaintenanceRows();
     document.getElementById('tableModal').classList.add('active');
 }
 
-async function saveTable() {
-    await sb.from('tables').insert({
-        number: parseInt(document.getElementById('tableNumber').value),
-        capacity: parseInt(document.getElementById('tableCapacity').value),
-        table_type: document.getElementById('tableType').value || 'fisica',
-        status: 'available'
+function renderMaintenanceRows() {
+    const sorted = [...allTables].sort((a,b) => a.number - b.number);
+    const rows = sorted.map(t => {
+        const isOccupied = t.status === 'occupied';
+        const typeBadge = t.table_type === 'virtual'
+            ? '<span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;">VIRTUAL</span>'
+            : '<span style="background:#333;color:#a0a0a0;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;">FIXA</span>';
+        return `
+        <div class="maintenance-row" data-id="${t.id}" style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #333;border-radius:8px;margin-bottom:8px;background:#1a1a1a;">
+            <span style="font-weight:700;min-width:70px;">Mesa ${t.number}</span>
+            ${typeBadge}
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="color:#a0a0a0;font-size:0.8rem;">Lugares:</span>
+                <input type="number" min="1" max="50" value="${t.capacity}" class="maint-cap" data-id="${t.id}" style="width:60px;padding:6px;text-align:center;border:1px solid #444;border-radius:4px;background:#0d0d0d;color:#f5f5f5;font-size:0.9rem;">
+            </div>
+            ${isOccupied ? '<span style="color:#e63946;font-size:0.75rem;margin-left:auto;">OCUPADA</span>' : ''}
+            ${t.table_type === 'virtual' && !isOccupied ? `<button class="btn btn-danger btn-sm" style="margin-left:auto;" onclick="removeMaintenanceRow('${t.id}')">Remover</button>` : ''}
+        </div>`;
+    }).join('');
+
+    const newRows = maintenanceNewTables.map((t, i) => `
+        <div class="maintenance-row maintenance-new" style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #f39c12;border-radius:8px;margin-bottom:8px;background:rgba(243,156,18,0.05);">
+            <input type="number" min="1" max="999" value="${t.number}" class="maint-new-num" data-idx="${i}" style="width:70px;padding:6px;text-align:center;border:1px solid #f39c12;border-radius:4px;background:#0d0d0d;color:#f5f5f5;font-size:0.9rem;font-weight:700;">
+            <span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem;font-weight:700;">NOVA</span>
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="color:#a0a0a0;font-size:0.8rem;">Lugares:</span>
+                <input type="number" min="1" max="50" value="${t.capacity}" class="maint-new-cap" data-idx="${i}" style="width:60px;padding:6px;text-align:center;border:1px solid #444;border-radius:4px;background:#0d0d0d;color:#f5f5f5;font-size:0.9rem;">
+            </div>
+            <select class="maint-new-type" data-idx="${i}" style="padding:6px;border:1px solid #444;border-radius:4px;background:#0d0d0d;color:#f5f5f5;font-size:0.8rem;margin-left:auto;">
+                <option value="fisica" ${t.table_type==='fisica'?'selected':''}>Fixa</option>
+                <option value="virtual" ${t.table_type==='virtual'?'selected':''}>Virtual</option>
+            </select>
+            <button class="btn btn-danger btn-sm" onclick="removeNewTableRow(${i})">X</button>
+        </div>
+    `).join('');
+
+    document.getElementById('maintenanceBody').innerHTML = rows + newRows || '<div style="color:#666;text-align:center;">Nenhuma mesa</div>';
+}
+
+function addNewTableRow() {
+    const maxNum = [...allTables, ...maintenanceNewTables].reduce((m, t) => Math.max(m, t.number || 0), 0);
+    maintenanceNewTables.push({ number: maxNum + 1, capacity: 4, table_type: 'virtual' });
+    renderMaintenanceRows();
+}
+
+function removeNewTableRow(idx) {
+    maintenanceNewTables.splice(idx, 1);
+    renderMaintenanceRows();
+}
+
+function removeMaintenanceRow(id) {
+    const row = document.querySelector(`.maintenance-row[data-id="${id}"]`);
+    if (row) { row.style.opacity = '0.3'; row.style.borderColor = '#e63946'; }
+    row.dataset.delete = 'true';
+}
+
+async function saveMaintenance() {
+    const updates = [];
+    document.querySelectorAll('.maintenance-row[data-id]').forEach(row => {
+        if (row.dataset.delete === 'true') {
+            updates.push(sb.from('tables').delete().eq('id', row.dataset.id));
+            return;
+        }
+        const id = row.dataset.id;
+        const cap = row.querySelector('.maint-cap');
+        if (cap) updates.push(sb.from('tables').update({ capacity: parseInt(cap.value) }).eq('id', id));
     });
+
+    for (const t of maintenanceNewTables) {
+        const num = document.querySelector(`.maint-new-num[data-idx="${maintenanceNewTables.indexOf(t)}"]`);
+        const cap = document.querySelector(`.maint-new-cap[data-idx="${maintenanceNewTables.indexOf(t)}"]`);
+        const typ = document.querySelector(`.maint-new-type[data-idx="${maintenanceNewTables.indexOf(t)}"]`);
+        if (num && cap) {
+            updates.push(sb.from('tables').insert({
+                number: parseInt(num.value),
+                capacity: parseInt(cap.value),
+                table_type: typ ? typ.value : 'virtual',
+                status: 'available'
+            }));
+        }
+    }
+
+    await Promise.all(updates);
     closeModal('tableModal');
-    showToast('Mesa criada!');
+    showToast('Mesas atualizadas!');
     loadTables();
 }
 
@@ -790,14 +853,6 @@ function filterTables(f, el) {
     document.querySelectorAll('#section-tables .tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
     renderTablesGrid();
-}
-
-async function deleteTable(id, type) {
-    if (type !== 'virtual') { showToast('Apenas mesas virtuais podem ser excluidas', 'error'); return; }
-    if (!confirm('Excluir esta mesa virtual?')) return;
-    await sb.from('tables').delete().eq('id', id);
-    showToast('Mesa excluida!');
-    loadTables();
 }
 
 // ========== FLUXO DE CAIXA ==========
