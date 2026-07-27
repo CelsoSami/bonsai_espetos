@@ -134,6 +134,7 @@ function showToast(msg, type='success') {
 }
 function isMaster() { return userProfile && userProfile.is_master === true; }
 function isManager() { return userProfile && (userProfile.is_master || userProfile.is_manager); }
+function isOnlyChaia() { return userProfile && userProfile.email === 'celso.chaia'; }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); if (id === 'comandaModal') { document.getElementById('comandaEditSave')?.remove(); document.getElementById('comandaEditCancel')?.remove(); } }
 document.addEventListener('click', e => {
     if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('active');
@@ -2404,6 +2405,7 @@ function renderUsers(filter='all') {
                 ${!u.approved&&!u.is_master?`<button class="btn btn-success btn-xs" onclick="approveUser('${u.id}')">Aprovar</button>`:''}
                 ${!u.approved&&!u.is_master?`<button class="btn btn-danger btn-xs" onclick="rejectUser('${u.id}')">Rejeitar</button>`:''}
                 ${u.approved&&!u.is_master?`<button class="btn btn-danger btn-xs" onclick="rejectUser('${u.id}')">Remover</button>`:''}
+                ${u.is_master&&isOnlyChaia()?`<button class="btn btn-danger btn-xs" onclick="rejectUser('${u.id}')">Remover Master</button>`:''}
                 </div>
             </td>
         </tr>
@@ -2423,6 +2425,11 @@ async function approveUser(id) {
 }
 
 async function rejectUser(id) {
+    const targetUser = allUsers.find(u => u.id === id);
+    if (targetUser && targetUser.is_master && !isOnlyChaia()) {
+        showToast('Apenas celso.chaia pode remover usuarios master!', 'error');
+        return;
+    }
     if (!confirm('Remover este usuario?')) return;
     await sb.from('users').delete().eq('id', id);
     showToast('Usuario removido!');
