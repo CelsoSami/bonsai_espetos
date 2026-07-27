@@ -1415,7 +1415,7 @@ async function openClosedDayDetail(id) {
             ${dc.notes ? `<div style="background:rgba(243,156,18,0.1);border:1px solid #f39c12;border-radius:8px;padding:10px;margin-bottom:12px;"><strong style="color:#f39c12;">Observacoes:</strong> <span style="color:#ddd;">${dc.notes}</span></div>` : ''}
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+        <div id="closedDayStats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
             <div style="background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:12px;text-align:center;">
                 <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Receita</div>
                 <div style="font-size:1.2rem;font-weight:700;color:#2ecc71;">${fmt(dc.total_revenue)}</div>
@@ -1430,16 +1430,19 @@ async function openClosedDayDetail(id) {
             </div>
         </div>
 
-        <div style="border-top:1px solid #333;padding-top:12px;margin-bottom:8px;">
+        <div style="border-top:1px solid #333;padding-top:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
             <strong style="color:#f5f5f5;">Pedidos (${orders.length})</strong>
         </div>
-        <div style="max-height:200px;overflow-y:auto;margin-bottom:16px;">
+        <div style="max-height:250px;overflow-y:auto;margin-bottom:16px;">
             ${orders.map(o => `
-                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222;font-size:0.85rem;">
-                    <span>${o.tables ? 'Mesa ' + o.tables.number : '-'} | ${o.comandas || '-'}</span>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #222;font-size:0.85rem;">
+                    <div style="flex:1;">
+                        <span>${o.tables ? 'Mesa ' + o.tables.number : '-'} | ${o.comandas || '-'}</span>
+                    </div>
                     <span style="display:flex;gap:8px;align-items:center;">
                         ${statusBadge(o.status)}
                         <span style="font-weight:600;${o.status === 'delivered' ? 'color:#2ecc71' : o.status === 'cancelled' ? 'color:#e63946' : ''}">${fmt(o.total)}</span>
+                        <button class="btn btn-outline btn-xs" onclick="editClosedDayOrder('${o.id}','${dc.id}')">Editar</button>
                     </span>
                 </div>
             `).join('') || '<div style="color:#666;text-align:center;padding:8px;">Nenhum pedido</div>'}
@@ -1459,10 +1462,191 @@ async function openClosedDayDetail(id) {
     `;
 
     document.getElementById('comandaModalBody').innerHTML = html;
-    document.getElementById('btnComandaEdit').style.display = 'none';
+
+    document.getElementById('btnComandaEdit').style.display = '';
+    document.getElementById('btnComandaEdit').textContent = 'Editar Caixa';
+    document.getElementById('btnComandaEdit').onclick = () => editClosedDay(dc);
     document.getElementById('btnComandaReceipt').style.display = 'none';
     document.getElementById('btnComandaPay').style.display = 'none';
     document.getElementById('comandaModal').classList.add('active');
+}
+
+function editClosedDay(dc) {
+    const body = document.getElementById('comandaModalBody');
+    let html = `
+        <div class="form-group">
+            <label>Receita Total (R$)</label>
+            <input type="number" step="0.01" id="editCdRevenue" value="${dc.total_revenue}" style="width:100%;padding:10px;background:#252525;border:1px solid #333;border-radius:6px;color:#f5f5f5;font-size:1rem;">
+        </div>
+        <div class="form-group">
+            <label>Caixa Real (R$)</label>
+            <input type="number" step="0.01" id="editCdBalance" value="${dc.closing_balance}" style="width:100%;padding:10px;background:#252525;border:1px solid #333;border-radius:6px;color:#f5f5f5;font-size:1rem;">
+        </div>
+        <div class="form-group">
+            <label>Total de Pedidos</label>
+            <input type="number" id="editCdOrders" value="${dc.total_orders}" style="width:100%;padding:10px;background:#252525;border:1px solid #333;border-radius:6px;color:#f5f5f5;font-size:1rem;">
+        </div>
+        <div class="form-group">
+            <label>Observacoes</label>
+            <textarea id="editCdNotes" rows="3" style="width:100%;padding:10px;background:#252525;border:1px solid #333;border-radius:6px;color:#f5f5f5;font-size:0.9rem;resize:vertical;">${dc.notes || ''}</textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+            <button class="btn btn-secondary btn-md" onclick="openClosedDayDetail('${dc.id}')">Cancelar</button>
+            <button class="btn btn-success btn-md" onclick="saveClosedDayEdit('${dc.id}')">Salvar</button>
+        </div>
+    `;
+    body.innerHTML = html;
+    document.getElementById('btnComandaEdit').style.display = 'none';
+}
+
+async function saveClosedDayEdit(id) {
+    const dc = allClosedDays.find(x => x.id === id);
+    if (!dc) return;
+
+    const newRevenue = parseFloat(document.getElementById('editCdRevenue').value) || 0;
+    const newBalance = parseFloat(document.getElementById('editCdBalance').value) || 0;
+    const newOrders = parseInt(document.getElementById('editCdOrders').value) || 0;
+    const newNotes = document.getElementById('editCdNotes').value;
+    const newDiscrepancy = newBalance - newRevenue;
+
+    const oldData = { total_revenue: dc.total_revenue, closing_balance: dc.closing_balance, total_orders: dc.total_orders, notes: dc.notes, discrepancy: dc.discrepancy };
+
+    await sb.from('daily_closes').update({
+        total_revenue: newRevenue,
+        closing_balance: newBalance,
+        total_orders: newOrders,
+        notes: newNotes,
+        discrepancy: newDiscrepancy
+    }).eq('id', id);
+
+    await sb.from('audit_log').insert({
+        action: 'UPDATE',
+        table_name: 'daily_closes',
+        record_id: id,
+        old_data: oldData,
+        new_data: { total_revenue: newRevenue, closing_balance: newBalance, total_orders: newOrders, notes: newNotes, discrepancy: newDiscrepancy },
+        user_id: currentUser,
+        user_name: userProfile.name,
+        details: `Caixa ${dc.close_date} editado`
+    });
+
+    showToast('Caixa atualizado com sucesso!');
+    const updated = allClosedDays.find(x => x.id === id);
+    if (updated) {
+        updated.total_revenue = newRevenue;
+        updated.closing_balance = newBalance;
+        updated.total_orders = newOrders;
+        updated.notes = newNotes;
+        updated.discrepancy = newDiscrepancy;
+    }
+    openClosedDayDetail(id);
+}
+
+async function editClosedDayOrder(orderId, closeDayId) {
+    const { data: order } = await sb.from('orders').select('*, tables(number)').eq('id', orderId).single();
+    if (!order) return;
+
+    const body = document.getElementById('comandaModalBody');
+    const items = order.items || [];
+    const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
+
+    let html = `
+        <div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <strong style="color:#f5f5f5;">Pedido #${orderId.slice(0,8)}</strong>
+                <span>${order.tables ? 'Mesa ' + order.tables.number : '-'} | ${order.comandas || '-'}</span>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Comanda</label>
+            <input type="text" id="editOrderComanda" value="${order.comandas || ''}" style="width:100%;padding:10px;background:#252525;border:1px solid #333;border-radius:6px;color:#f5f5f5;font-size:1rem;">
+        </div>
+        <div class="form-group">
+            <label>Total (R$)</label>
+            <input type="number" step="0.01" id="editOrderTotal" value="${order.total}" style="width:100%;padding:10px;background:#252525;border:1px solid #333;border-radius:6px;color:#f5f5f5;font-size:1rem;">
+        </div>
+        <div class="form-group">
+            <label>Status</label>
+            <select id="editOrderStatus" style="width:100%;padding:10px;background:#252525;border:1px solid #333;border-radius:6px;color:#f5f5f5;font-size:1rem;">
+                <option value="preparing" ${order.status === 'preparing' ? 'selected' : ''}>Preparando</option>
+                <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Entregue</option>
+                <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelado</option>
+            </select>
+        </div>
+        <div style="border-top:1px solid #333;padding-top:12px;margin-bottom:12px;">
+            <strong style="color:#f5f5f5;">Itens (${items.length})</strong>
+        </div>
+        <div id="editOrderItemsList">
+            ${items.map((it, i) => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #222;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button class="btn btn-secondary btn-icon btn-xs" onclick="editOrderItemQty('${orderId}',${i},-1)">-</button>
+                        <span>${it.quantity}</span>
+                        <button class="btn btn-secondary btn-icon btn-xs" onclick="editOrderItemQty('${orderId}',${i},1)">+</button>
+                        <span>${it.name}</span>
+                    </div>
+                    <span style="color:#f39c12;font-weight:600;">${fmt(it.price * it.quantity)}</span>
+                </div>
+            `).join('') || '<div style="color:#666;text-align:center;padding:8px;">Nenhum item</div>'}
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+            <button class="btn btn-secondary btn-md" onclick="openClosedDayDetail('${closeDayId}')">Cancelar</button>
+            <button class="btn btn-success btn-md" onclick="saveClosedDayOrderEdit('${orderId}','${closeDayId}')">Salvar</button>
+        </div>
+    `;
+    body.innerHTML = html;
+    document.getElementById('btnComandaEdit').style.display = 'none';
+    window._editOrderItems = JSON.parse(JSON.stringify(items));
+}
+
+function editOrderItemQty(orderId, idx, delta) {
+    window._editOrderItems[idx].quantity += delta;
+    if (window._editOrderItems[idx].quantity <= 0) window._editOrderItems.splice(idx, 1);
+    const items = window._editOrderItems;
+    document.getElementById('editOrderItemsList').innerHTML = items.map((it, i) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #222;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn btn-secondary btn-icon btn-xs" onclick="editOrderItemQty('${orderId}',${i},-1)">-</button>
+                <span>${it.quantity}</span>
+                <button class="btn btn-secondary btn-icon btn-xs" onclick="editOrderItemQty('${orderId}',${i},1)">+</button>
+                <span>${it.name}</span>
+            </div>
+            <span style="color:#f39c12;font-weight:600;">${fmt(it.price * it.quantity)}</span>
+        </div>
+    `).join('') || '<div style="color:#666;text-align:center;padding:8px;">Nenhum item</div>';
+}
+
+async function saveClosedDayOrderEdit(orderId, closeDayId) {
+    const { data: order } = await sb.from('orders').select('*').eq('id', orderId).single();
+    if (!order) return;
+
+    const newComanda = document.getElementById('editOrderComanda').value;
+    const newTotal = parseFloat(document.getElementById('editOrderTotal').value) || 0;
+    const newStatus = document.getElementById('editOrderStatus').value;
+    const newItems = window._editOrderItems || order.items;
+
+    const oldData = { comandas: order.comandas, total: order.total, status: order.status, items: order.items };
+
+    await sb.from('orders').update({
+        comandas: newComanda,
+        total: newTotal,
+        status: newStatus,
+        items: newItems
+    }).eq('id', orderId);
+
+    await sb.from('audit_log').insert({
+        action: 'UPDATE',
+        table_name: 'orders',
+        record_id: orderId,
+        old_data: oldData,
+        new_data: { comandas: newComanda, total: newTotal, status: newStatus, items: newItems },
+        user_id: currentUser,
+        user_name: userProfile.name,
+        details: `Pedido ${orderId.slice(0,8)} editado no caixa de ${closeDayId}`
+    });
+
+    showToast('Pedido atualizado com sucesso!');
+    openClosedDayDetail(closeDayId);
 }
 
 function openCashModal(type) {
