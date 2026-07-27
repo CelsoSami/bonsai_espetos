@@ -108,6 +108,7 @@ function showSection(name) {
         case 'stock': loadStock(); break;
         case 'tables': loadTables(); break;
         case 'cashflow': loadCashflow(); break;
+        case 'closed-days': loadClosedDays(); break;
         case 'reports': loadReports(); break;
         case 'users': loadUsers(); break;
     }
@@ -1296,6 +1297,172 @@ async function confirmCloseDay() {
     closeModal('closeDayModal');
     showToast('Caixa fechado com sucesso!');
     loadCashflow();
+}
+
+// ========== CAIXAS FECHADOS ==========
+let allClosedDays = [];
+
+async function loadClosedDays() {
+    const { data: closes } = await sb.from('daily_closes').select('*').order('close_date', { ascending: false });
+    allClosedDays = closes || [];
+
+    if (!allClosedDays.length) {
+        document.getElementById('closedDaysContent').innerHTML = '<div class="card"><div class="card-body" style="text-align:center;color:#a0a0a0;"><h2>Nenhum caixa fechado</h2><p>Os fechamentos diarios aparecerao aqui.</p></div></div>';
+        return;
+    }
+
+    const grouped = {};
+    allClosedDays.forEach(dc => {
+        const month = dc.close_date?.slice(0,7) || 'Sem data';
+        if (!grouped[month]) grouped[month] = [];
+        grouped[month].push(dc);
+    });
+
+    let html = '';
+    Object.entries(grouped).forEach(([month, closes]) => {
+        const monthTotal = closes.reduce((s,c) => s + parseFloat(c.total_revenue||0), 0);
+        const monthDiscrepancy = closes.reduce((s,c) => s + parseFloat(c.discrepancy||0), 0);
+        html += `
+        <div class="card" style="margin-bottom:20px;">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <h2>${formatMonth(month)}</h2>
+                <div style="display:flex;gap:16px;font-size:0.85rem;">
+                    <span>Receita: <strong style="color:#2ecc71;">${fmt(monthTotal)}</strong></span>
+                    <span>Divergencia: <strong style="color:${Math.abs(monthDiscrepancy) > 0.01 ? '#e63946' : '#2ecc71'};">${fmt(monthDiscrepancy)}</strong></span>
+                </div>
+            </div>
+            <div class="card-body" style="padding:0;">
+                ${closes.map(dc => {
+                    const discrepancy = parseFloat(dc.discrepancy||0);
+                    const hasProblem = Math.abs(discrepancy) > 0.01 || (dc.notes && dc.notes.length > 0);
+                    return `
+                    <div style="display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid #222;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'" onclick="openClosedDayDetail('${dc.id}')">
+                        <div style="min-width:80px;">
+                            <div style="font-size:1.1rem;font-weight:700;color:#f5f5f5;">${formatDateShort(dc.close_date)}</div>
+                            <div style="font-size:0.7rem;color:#666;">${dayOfWeek(dc.close_date)}</div>
+                        </div>
+                        <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+                            <div>
+                                <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Receita</div>
+                                <div style="font-size:0.95rem;font-weight:600;color:#2ecc71;">${fmt(dc.total_revenue)}</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Pedidos</div>
+                                <div style="font-size:0.95rem;font-weight:600;color:#f5f5f5;">${dc.total_orders}</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Caixa</div>
+                                <div style="font-size:0.95rem;font-weight:600;color:#3498db;">${fmt(dc.closing_balance)}</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Divergencia</div>
+                                <div style="font-size:0.95rem;font-weight:700;color:${Math.abs(discrepancy) > 0.01 ? '#e63946' : '#2ecc71'};">${fmt(discrepancy)}</div>
+                            </div>
+                        </div>
+                        <div style="min-width:60px;text-align:right;">
+                            <div style="font-size:0.7rem;color:#666;">${dc.closed_by_name || '-'}</div>
+                            ${dc.notes ? '<div style="font-size:0.65rem;color:#f39c12;margin-top:2px;">Com observacoes</div>' : ''}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    });
+
+    document.getElementById('closedDaysContent').innerHTML = html;
+}
+
+function formatMonth(m) {
+    const [y, mo] = m.split('-');
+    const months = ['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    return `${months[parseInt(mo)-1]} ${y}`;
+}
+
+function formatDateShort(d) {
+    if (!d) return '-';
+    const [y,m,day] = d.split('-');
+    return `${day}/${m}`;
+}
+
+function dayOfWeek(d) {
+    if (!d) return '';
+    const days = ['Domingo','Segunda-feira','Terca-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sabado'];
+    return days[new Date(d + 'T12:00:00').getDay()];
+}
+
+async function openClosedDayDetail(id) {
+    const dc = allClosedDays.find(x => x.id === id);
+    if (!dc) return;
+
+    const [ordersRes, cashRes] = await Promise.all([
+        sb.from('orders').select('*, tables(number)').eq('created_at::date', dc.close_date),
+        sb.from('cashflow').select('*').eq('created_at::date', dc.close_date)
+    ]);
+
+    const orders = ordersRes.data || [];
+    const cash = cashRes.data || [];
+    const delivered = orders.filter(o => o.status === 'delivered');
+    const cancelled = orders.filter(o => o.status === 'cancelled');
+
+    document.getElementById('comandaModalTitle').textContent = `Caixa: ${formatDateShort(dc.close_date)} - ${dayOfWeek(dc.close_date)}`;
+
+    let html = `
+        <div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <span style="color:#a0a0a0;">Fechado por: <strong>${dc.closed_by_name || '-'}</strong></span>
+                <span style="color:#a0a0a0;">${fmtDate(dc.created_at)}</span>
+            </div>
+            ${dc.notes ? `<div style="background:rgba(243,156,18,0.1);border:1px solid #f39c12;border-radius:8px;padding:10px;margin-bottom:12px;"><strong style="color:#f39c12;">Observacoes:</strong> <span style="color:#ddd;">${dc.notes}</span></div>` : ''}
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+            <div style="background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:12px;text-align:center;">
+                <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Receita</div>
+                <div style="font-size:1.2rem;font-weight:700;color:#2ecc71;">${fmt(dc.total_revenue)}</div>
+            </div>
+            <div style="background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:12px;text-align:center;">
+                <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Caixa Real</div>
+                <div style="font-size:1.2rem;font-weight:700;color:#3498db;">${fmt(dc.closing_balance)}</div>
+            </div>
+            <div style="background:#1a1a2e;border:1px solid ${Math.abs(dc.discrepancy) > 0.01 ? '#e63946' : '#2ecc71'};border-radius:8px;padding:12px;text-align:center;">
+                <div style="font-size:0.65rem;color:#666;text-transform:uppercase;">Divergencia</div>
+                <div style="font-size:1.2rem;font-weight:700;color:${Math.abs(dc.discrepancy) > 0.01 ? '#e63946' : '#2ecc71'};">${fmt(dc.discrepancy)}</div>
+            </div>
+        </div>
+
+        <div style="border-top:1px solid #333;padding-top:12px;margin-bottom:8px;">
+            <strong style="color:#f5f5f5;">Pedidos (${orders.length})</strong>
+        </div>
+        <div style="max-height:200px;overflow-y:auto;margin-bottom:16px;">
+            ${orders.map(o => `
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222;font-size:0.85rem;">
+                    <span>${o.tables ? 'Mesa ' + o.tables.number : '-'} | ${o.comandas || '-'}</span>
+                    <span style="display:flex;gap:8px;align-items:center;">
+                        ${statusBadge(o.status)}
+                        <span style="font-weight:600;${o.status === 'delivered' ? 'color:#2ecc71' : o.status === 'cancelled' ? 'color:#e63946' : ''}">${fmt(o.total)}</span>
+                    </span>
+                </div>
+            `).join('') || '<div style="color:#666;text-align:center;padding:8px;">Nenhum pedido</div>'}
+        </div>
+
+        <div style="border-top:1px solid #333;padding-top:12px;margin-bottom:8px;">
+            <strong style="color:#f5f5f5;">Movimentacoes (${cash.length})</strong>
+        </div>
+        <div style="max-height:200px;overflow-y:auto;">
+            ${cash.map(c => `
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222;font-size:0.85rem;">
+                    <span>${c.description || '-'}</span>
+                    <span style="font-weight:600;color:${c.type === 'entrada' ? '#2ecc71' : '#e63946'};">${c.type === 'entrada' ? '+' : '-'}${fmt(c.amount)}</span>
+                </div>
+            `).join('') || '<div style="color:#666;text-align:center;padding:8px;">Nenhuma movimentacao</div>'}
+        </div>
+    `;
+
+    document.getElementById('comandaModalBody').innerHTML = html;
+    document.getElementById('btnComandaEdit').style.display = 'none';
+    document.getElementById('btnComandaReceipt').style.display = 'none';
+    document.getElementById('btnComandaPay').style.display = 'none';
+    document.getElementById('comandaModal').classList.add('active');
 }
 
 function openCashModal(type) {
