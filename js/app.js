@@ -331,15 +331,6 @@ async function updateOrderStatus(id, status) {
     if (status === 'cancelled') {
         await sb.from('kitchen_orders').update({ status: 'cancelled' }).eq('order_id', id).eq('status', 'pending');
     }
-    if (status === 'delivered' || status === 'cancelled') {
-        const { data: o } = await sb.from('orders').select('table_id').eq('id', id).single();
-        if (o) {
-            const { data: others } = await sb.from('orders').select('id').eq('table_id', o.table_id).eq('status', 'pending');
-            if (!others || others.length === 0) {
-                await sb.from('tables').update({ status: 'available', occupied_at: null }).eq('id', o.table_id);
-            }
-        }
-    }
     showToast('Status atualizado!');
     loadOrders();
 }
