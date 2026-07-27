@@ -498,9 +498,9 @@
                 <button class="modal-close" onclick="closeModal('comandaModal')">&times;</button>
             </div>
             <div class="modal-body" id="comandaModalBody" style="max-height:60vh;overflow-y:auto;"></div>
-            <div class="modal-footer" style="display:flex;justify-content:space-between;">
-                <button class="btn btn-success btn-sm" onclick="fecharComanda()">Fechar Comanda</button>
-                <button class="btn btn-primary btn-sm" onclick="toggleAddProductToComanda()">+ Produto</button>
+            <div class="modal-footer" style="display:flex;justify-content:space-between;gap:8px;">
+                <button class="btn btn-success btn-sm" onclick="openComandaEdit()" id="btnComandaEdit">Editar Comanda</button>
+                <button class="btn btn-primary btn-sm" onclick="openComandaReceipt()" id="btnComandaReceipt">Fechamento de Conta</button>
             </div>
         </div>
     </div>

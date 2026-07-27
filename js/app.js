@@ -133,7 +133,7 @@ function showToast(msg, type='success') {
 }
 function isMaster() { return userProfile && userProfile.is_master === true; }
 function isManager() { return userProfile && (userProfile.is_master || userProfile.is_manager); }
-function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); if (id === 'comandaModal') { document.getElementById('comandaEditSave')?.remove(); document.getElementById('comandaEditCancel')?.remove(); } }
 document.addEventListener('click', e => {
     if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('active');
     const sidebar = document.querySelector('.sidebar');
@@ -852,18 +852,16 @@ function filterTables(f, el) {
 
 // ========== COMANDA ==========
 let currentComanda = null;
-let comandaAddingProduct = false;
 
 async function openComanda(orderId) {
     const { data: order } = await sb.from('orders').select('*').eq('id', orderId).single();
     if (!order) return;
     currentComanda = order;
-    comandaAddingProduct = false;
-    renderComandaModal();
+    renderComandaDetails();
     document.getElementById('comandaModal').classList.add('active');
 }
 
-function renderComandaModal() {
+function renderComandaDetails() {
     const o = currentComanda;
     if (!o) return;
     const isActive = o.status === 'pending' || o.status === 'preparing';
@@ -871,6 +869,9 @@ function renderComandaModal() {
 
     const items = o.items || [];
     const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
+
+    document.getElementById('btnComandaEdit').style.display = isActive ? '' : 'none';
+    document.getElementById('btnComandaReceipt').style.display = items.length ? '' : 'none';
 
     let html = `
         <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
@@ -884,7 +885,7 @@ function renderComandaModal() {
                         <strong>${it.quantity}x ${it.name}</strong>
                         <span style="color:#a0a0a0;margin-left:8px;">${fmt(it.price)}</span>
                     </div>
-                    ${isActive ? `<button class="btn btn-danger btn-sm" onclick="removeItemFromComanda(${i})" style="padding:4px 8px;font-size:0.7rem;">Remover</button>` : ''}
+                    <span style="color:#f39c12;font-weight:600;">${fmt(it.price * it.quantity)}</span>
                 </div>
             `).join('')}
             ${items.length === 0 ? '<div style="color:#666;text-align:center;padding:16px;">Nenhum item</div>' : ''}
@@ -895,69 +896,174 @@ function renderComandaModal() {
         </div>
     `;
 
-    if (comandaAddingProduct && isActive) {
-        html += `
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #333;">
-            <div style="font-size:0.75rem;text-transform:uppercase;color:#a0a0a0;margin-bottom:8px;">Adicionar Produto</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;">
-                ${allProducts.filter(p => p.active).map(p => `
-                    <button class="btn btn-secondary btn-sm" style="text-align:left;padding:8px;font-size:0.8rem;" onclick="addItemToComanda('${p.id}',${JSON.stringify(p.name).replace(/"/g,'&quot;')},${p.price})">
-                        ${p.name}<br><span style="color:#2ecc71;">${fmt(p.price)}</span>
-                    </button>
-                `).join('')}
+    document.getElementById('comandaModalBody').innerHTML = html;
+}
+
+let comandaEditItems = [];
+
+function openComandaEdit() {
+    if (!currentComanda) return;
+    if (!allProducts.length) { sb.from('products').select('*').order('name').then(({ data }) => { allProducts = data || []; renderComandaEdit(); }); return; }
+    renderComandaEdit();
+}
+
+function renderComandaEdit() {
+    const o = currentComanda;
+    if (!o) return;
+    comandaEditItems = JSON.parse(JSON.stringify(o.items || []));
+    document.getElementById('comandaModalTitle').textContent = `Editar: ${o.comandas || 'Sem nome'}`;
+
+    let html = `
+        <div class="form-group">
+            <label>Produtos</label>
+            <div class="product-grid" style="max-height:250px;overflow-y:auto;">
+                ${allProducts.filter(p => p.active).map(p => {
+                    const st = p.station === 'cozinha' ? 'COZINHA' : p.station === 'churrasqueiro' ? 'CHURRASQUEIRO' : p.station === 'pizzaria' ? 'PIZZARIA' : '';
+                    const stColor = p.station === 'cozinha' ? '#3498db' : p.station === 'churrasqueiro' ? '#f39c12' : p.station === 'pizzaria' ? '#9b59b6' : '';
+                    return `
+                    <div class="product-chip" onclick="editComandaAddItem('${p.id}',${JSON.stringify(p.name).replace(/"/g,'&quot;')},${p.price})">
+                        ${st ? `<span style="font-size:0.65rem;color:${stColor};font-weight:700;display:block;">${st}</span>` : ''}
+                        <div class="product-name">${p.name}</div>
+                        <div class="product-price">${fmt(p.price)}</div>
+                    </div>`;
+                }).join('')}
             </div>
-        </div>`;
-    }
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+            <label>Itens da Comanda</label>
+            <div id="comandaEditItems"></div>
+        </div>
+        <div class="order-total" style="margin-top:8px;">
+            <span class="total-label">Total</span>
+            <span class="total-value" id="comandaEditTotal">R$ 0,00</span>
+        </div>
+    `;
 
     document.getElementById('comandaModalBody').innerHTML = html;
-    document.querySelector('#comandaModal .btn-primary').style.display = isActive ? '' : 'none';
-    document.querySelector('#comandaModal .btn-success').style.display = isActive ? '' : 'none';
+    renderComandaEditItems();
+
+    document.getElementById('btnComandaEdit').style.display = 'none';
+    document.getElementById('btnComandaReceipt').style.display = 'none';
+
+    const footer = document.querySelector('#comandaModal .modal-footer');
+    if (!footer.querySelector('#comandaEditSave')) {
+        const saveBtn = document.createElement('button');
+        saveBtn.id = 'comandaEditSave';
+        saveBtn.className = 'btn btn-success btn-sm';
+        saveBtn.textContent = 'Salvar Alteracoes';
+        saveBtn.onclick = saveComandaEdit;
+        footer.appendChild(saveBtn);
+    }
+    if (!footer.querySelector('#comandaEditCancel')) {
+        const cancelBtn = document.createElement('button');
+        cancelBtn.id = 'comandaEditCancel';
+        cancelBtn.className = 'btn btn-secondary btn-sm';
+        cancelBtn.textContent = 'Voltar';
+        cancelBtn.onclick = () => { document.getElementById('comandaEditSave')?.remove(); document.getElementById('comandaEditCancel')?.remove(); renderComandaDetails(); };
+        footer.insertBefore(cancelBtn, footer.firstChild);
+    }
 }
 
-function toggleAddProductToComanda() {
-    comandaAddingProduct = !comandaAddingProduct;
-    renderComandaModal();
+function renderComandaEditItems() {
+    const total = comandaEditItems.reduce((s, it) => s + it.price * it.quantity, 0);
+    document.getElementById('comandaEditTotal').textContent = fmt(total);
+    document.getElementById('comandaEditItems').innerHTML = comandaEditItems.map((it, i) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #222;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn btn-secondary btn-sm" style="padding:2px 8px;" onclick="editComandaChangeQty(${i},-1)">-</button>
+                <span>${it.quantity}</span>
+                <button class="btn btn-secondary btn-sm" style="padding:2px 8px;" onclick="editComandaChangeQty(${i},1)">+</button>
+                <strong>${it.name}</strong>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="color:#f39c12;font-weight:600;">${fmt(it.price * it.quantity)}</span>
+                <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:0.7rem;" onclick="editComandaRemoveItem(${i})">X</button>
+            </div>
+        </div>
+    `).join('') || '<div style="color:#666;text-align:center;padding:12px;">Nenhum item</div>';
 }
 
-async function addItemToComanda(pid, name, price) {
-    if (!currentComanda) return;
-    const items = currentComanda.items || [];
-    const existing = items.find(it => it.product_id === pid);
+function editComandaAddItem(pid, name, price) {
+    const existing = comandaEditItems.find(it => it.product_id === pid);
     if (existing) existing.quantity++;
-    else items.push({ product_id: pid, name, price, quantity: 1 });
+    else comandaEditItems.push({ product_id: pid, name, price, quantity: 1 });
+    renderComandaEditItems();
+}
 
-    const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
-    await sb.from('orders').update({ items, total }).eq('id', currentComanda.id);
+function editComandaChangeQty(idx, delta) {
+    comandaEditItems[idx].quantity += delta;
+    if (comandaEditItems[idx].quantity <= 0) comandaEditItems.splice(idx, 1);
+    renderComandaEditItems();
+}
+
+function editComandaRemoveItem(idx) {
+    comandaEditItems.splice(idx, 1);
+    renderComandaEditItems();
+}
+
+async function saveComandaEdit() {
+    if (!currentComanda) return;
+    const total = comandaEditItems.reduce((s, it) => s + it.price * it.quantity, 0);
+    await sb.from('orders').update({ items: comandaEditItems, total }).eq('id', currentComanda.id);
 
     const { data: updated } = await sb.from('orders').select('*').eq('id', currentComanda.id).single();
     currentComanda = updated;
 
-    const prod = allProducts.find(p => p.id === pid);
-    if (prod && prod.station) {
-        await sb.from('kitchen_orders').insert({
-            order_id: currentComanda.id,
-            table_number: currentComanda.table_id ? allTables.find(t => t.id === currentComanda.table_id)?.number || 0 : 0,
-            comanda_name: currentComanda.comandas || 'Comanda',
-            product_name: name,
-            quantity: 1,
-            station: prod.station,
-            status: 'pending'
-        });
+    for (const item of comandaEditItems) {
+        const prod = allProducts.find(p => p.id === item.product_id);
+        if (prod && prod.station) {
+            const existingKO = await sb.from('kitchen_orders').select('id').eq('order_id', currentComanda.id).eq('product_name', item.name).eq('status', 'pending');
+            if (!existingKO.data || existingKO.data.length < item.quantity) {
+                await sb.from('kitchen_orders').insert({
+                    order_id: currentComanda.id,
+                    table_number: currentComanda.table_id ? allTables.find(t => t.id === currentComanda.table_id)?.number || 0 : 0,
+                    comanda_name: currentComanda.comandas || 'Comanda',
+                    product_name: item.name,
+                    quantity: 1,
+                    station: prod.station,
+                    status: 'pending'
+                });
+            }
+        }
     }
 
-    renderComandaModal();
+    document.getElementById('comandaEditSave')?.remove();
+    document.getElementById('comandaEditCancel')?.remove();
+    renderComandaDetails();
+    showToast('Comanda atualizada!');
 }
 
-async function removeItemFromComanda(idx) {
+function openComandaReceipt() {
     if (!currentComanda) return;
-    const items = currentComanda.items || [];
-    if (idx < 0 || idx >= items.length) return;
-    items.splice(idx, 1);
+    const o = currentComanda;
+    const items = o.items || [];
     const total = items.reduce((s, it) => s + it.price * it.quantity, 0);
-    await sb.from('orders').update({ items, total }).eq('id', currentComanda.id);
-    const { data: updated } = await sb.from('orders').select('*').eq('id', currentComanda.id).single();
-    currentComanda = updated;
-    renderComandaModal();
+
+    document.getElementById('comandaModalTitle').textContent = `Conta: ${o.comandas || 'Sem nome'}`;
+
+    let html = `
+        <div style="text-align:center;padding:16px 0 8px;border-bottom:2px dashed #333;">
+            <div style="font-size:1.1rem;font-weight:700;color:#e63946;">BONSAI ESPETOS</div>
+            <div style="color:#a0a0a0;font-size:0.8rem;margin-top:4px;">${o.table_id ? 'Mesa ' + (allTables.find(t => t.id === o.table_id)?.number || '-') : 'Balcao'}</div>
+            <div style="color:#a0a0a0;font-size:0.75rem;margin-top:2px;">${fmtDate(o.created_at)}</div>
+        </div>
+        <div style="padding:12px 0;">
+            ${items.map(it => `
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222;">
+                    <span>${it.quantity}x ${it.name}</span>
+                    <span style="font-weight:600;">${fmt(it.price * it.quantity)}</span>
+                </div>
+            `).join('')}
+        </div>
+        <div style="text-align:center;padding:12px 0;border-top:2px dashed #333;">
+            <div style="color:#a0a0a0;font-size:0.8rem;">TOTAL A PAGAR</div>
+            <div style="font-size:1.5rem;font-weight:700;color:#2ecc71;margin-top:4px;">${fmt(total)}</div>
+        </div>
+    `;
+
+    document.getElementById('comandaModalBody').innerHTML = html;
+    document.getElementById('btnComandaEdit').style.display = 'none';
+    document.getElementById('btnComandaReceipt').style.display = 'none';
 }
 
 async function fecharComanda() {
