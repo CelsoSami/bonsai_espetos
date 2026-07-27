@@ -40,7 +40,7 @@
                                 <label>Senha</label>
                                 <input type="password" id="loginPassword" placeholder="Sua senha" required>
                             </div>
-                            <button type="submit" class="btn btn-primary">Entrar</button>
+                            <button type="submit" class="btn btn-primary btn-lg btn-block">Entrar</button>
                         </form>
                     </div>
                 </div>
@@ -245,7 +245,7 @@
                     <div id="section-tables" class="section" style="display:none;">
                         <div class="page-header">
                             <h1>Mesas</h1>
-                            <div style="display:flex;gap:8px;">
+                            <div class="btn-group">
                                 <button class="btn btn-warning btn-sm" onclick="openMaintenanceModal()">Manutencao</button>
                             </div>
                         </div>
@@ -261,7 +261,7 @@
                     <div id="section-cashflow" class="section" style="display:none;">
                         <div class="page-header">
                             <h1>Fluxo de Caixa</h1>
-                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div class="btn-group">
                                 <button class="btn btn-success btn-sm" onclick="openCashModal('entrada')">+ Entrada</button>
                                 <button class="btn btn-danger btn-sm" onclick="openCashModal('saida')">- Saida</button>
                                 <button class="btn btn-warning btn-sm" onclick="openCashModal('correcao')">Correcao</button>
@@ -290,7 +290,7 @@
                     <div id="section-reports" class="section" style="display:none;">
                         <div class="page-header">
                             <h1>Relatorios</h1>
-                            <div style="display:flex;gap:8px;">
+                            <div class="btn-group">
                                 <select id="reportPeriod" onchange="loadReports()" style="padding:8px 12px;border-radius:6px;border:1px solid #333;background:#1a1a1a;color:#f5f5f5;font-size:0.85rem;">
                                     <option value="today">Hoje</option>
                                     <option value="7">Ultimos 7 dias</option>
@@ -364,8 +364,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('newOrderModal')">Cancelar</button>
-                <button class="btn btn-primary" onclick="submitOrder()">Confirmar Pedido</button>
+                <button class="btn btn-secondary btn-md" onclick="closeModal('newOrderModal')">Cancelar</button>
+                <button class="btn btn-primary btn-md" onclick="submitOrder()">Confirmar Pedido</button>
             </div>
         </div>
     </div>
@@ -414,8 +414,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('productModal')">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveProduct()">Salvar</button>
+                <button class="btn btn-secondary btn-md" onclick="closeModal('productModal')">Cancelar</button>
+                <button class="btn btn-primary btn-md" onclick="saveProduct()">Salvar</button>
             </div>
         </div>
     </div>
@@ -434,8 +434,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('stockAdjustModal')">Cancelar</button>
-                <button class="btn btn-primary" onclick="adjustStock()">Confirmar</button>
+                <button class="btn btn-secondary btn-md" onclick="closeModal('stockAdjustModal')">Cancelar</button>
+                <button class="btn btn-primary btn-md" onclick="adjustStock()">Confirmar</button>
             </div>
         </div>
     </div>
@@ -447,9 +447,9 @@
                 <button class="modal-close" onclick="closeModal('tableModal')">&times;</button>
             </div>
             <div class="modal-body" style="max-height:60vh;overflow-y:auto;" id="maintenanceBody"></div>
-            <div class="modal-footer" style="display:flex;justify-content:space-between;">
+            <div class="modal-footer btn-group btn-group-between">
                 <button class="btn btn-primary btn-sm" onclick="addNewTableRow()">+ Adicionar Mesa</button>
-                <button class="btn btn-success" onclick="saveMaintenance()">Salvar Alteracoes</button>
+                <button class="btn btn-success btn-md" onclick="saveMaintenance()">Salvar Alteracoes</button>
             </div>
         </div>
     </div>
@@ -472,8 +472,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('cashModal')">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveCashflow()">Salvar</button>
+                <button class="btn btn-secondary btn-md" onclick="closeModal('cashModal')">Cancelar</button>
+                <button class="btn btn-primary btn-md" onclick="saveCashflow()">Salvar</button>
             </div>
         </div>
     </div>
@@ -486,8 +486,8 @@
             </div>
             <div class="modal-body" id="closeDayBody"></div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('closeDayModal')">Cancelar</button>
-                <button class="btn btn-primary" onclick="confirmCloseDay()">Confirmar Fechamento</button>
+                <button class="btn btn-secondary btn-md" onclick="closeModal('closeDayModal')">Cancelar</button>
+                <button class="btn btn-primary btn-md" onclick="confirmCloseDay()">Confirmar Fechamento</button>
             </div>
         </div>
     </div>
@@ -499,11 +499,11 @@
                 <button class="modal-close" onclick="closeModal('comandaModal')">&times;</button>
             </div>
             <div class="modal-body" id="comandaModalBody" style="max-height:60vh;overflow-y:auto;"></div>
-            <div class="modal-footer" style="display:flex;justify-content:space-between;gap:8px;">
-                <button class="btn btn-success btn-sm" onclick="openComandaEdit()" id="btnComandaEdit">Editar Comanda</button>
-                <div style="display:flex;gap:8px;">
-                    <button class="btn btn-primary btn-sm" onclick="openComandaReceipt()" id="btnComandaReceipt">Fechamento de Conta</button>
-                    <button class="btn btn-danger btn-sm" onclick="fecharComanda()" id="btnComandaPay">Comanda Paga</button>
+            <div class="modal-footer btn-group btn-group-between">
+                <button class="btn btn-success btn-md" onclick="openComandaEdit()" id="btnComandaEdit">Editar Comanda</button>
+                <div class="btn-group">
+                    <button class="btn btn-primary btn-md" onclick="openComandaReceipt()" id="btnComandaReceipt">Fechamento de Conta</button>
+                    <button class="btn btn-danger btn-md" onclick="fecharComanda()" id="btnComandaPay">Comanda Paga</button>
                 </div>
             </div>
         </div>
@@ -532,8 +532,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('newUserModal')">Cancelar</button>
-                <button class="btn btn-primary" onclick="createNewUser()">Criar Usuario</button>
+                <button class="btn btn-secondary btn-md" onclick="closeModal('newUserModal')">Cancelar</button>
+                <button class="btn btn-primary btn-md" onclick="createNewUser()">Criar Usuario</button>
             </div>
         </div>
     </div>

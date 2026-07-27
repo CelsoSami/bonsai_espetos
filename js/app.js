@@ -218,7 +218,7 @@ async function loadReadyItems() {
                     <td>${item.quantity}x</td>
                     <td>${item.station === 'cozinha' ? 'Cozinha' : item.station === 'churrasqueiro' ? 'Churrasqueiro' : item.station === 'pizzaria' ? 'Pizzaria' : item.station}</td>
                     <td>${timeAgo}</td>
-                    <td><button class="btn btn-primary btn-sm" onclick="acknowledgeReady('${item.id}')">Recebido</button></td>
+                    <td><button class="btn btn-success btn-sm" onclick="acknowledgeReady('${item.id}')">Recebido</button></td>
                 </tr>
             `;
         }).join('');
@@ -264,14 +264,16 @@ function renderOrders() {
             <td>#${(o.id||'').slice(0,8)}</td>
             <td>${o.tables ? o.tables.number : '-'}</td>
             <td><strong>${o.comandas || 'Comanda'}</strong></td>
-            <td><button class="btn btn-secondary btn-sm" onclick="viewOrderDetail('${o.id}')">${(o.items||[]).length} itens</button></td>
+            <td><button class="btn btn-outline btn-xs" onclick="viewOrderDetail('${o.id}')">${(o.items||[]).length} itens</button></td>
             <td>${fmt(o.total)}</td>
             <td>${statusBadge(o.status)}</td>
             <td>${o.user_name || '-'}</td>
-            <td class="action-buttons">
-                ${o.status==='pending'?`<button class="btn btn-warning btn-sm" onclick="updateOrderStatus('${o.id}','preparing')">Preparar</button>`:''}
-                ${o.status==='preparing'?`<button class="btn btn-success btn-sm" onclick="updateOrderStatus('${o.id}','delivered')">Entregar</button>`:''}
-                ${o.status!=='delivered'&&o.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="updateOrderStatus('${o.id}','cancelled')">Cancelar</button>`:''}
+            <td>
+                <div class="btn-group">
+                ${o.status==='pending'?`<button class="btn btn-warning btn-xs" onclick="updateOrderStatus('${o.id}','preparing')">Preparar</button>`:''}
+                ${o.status==='preparing'?`<button class="btn btn-success btn-xs" onclick="updateOrderStatus('${o.id}','delivered')">Entregar</button>`:''}
+                ${o.status!=='delivered'&&o.status!=='cancelled'?`<button class="btn btn-danger btn-xs" onclick="updateOrderStatus('${o.id}','cancelled')">Cancelar</button>`:''}
+                </div>
             </td>
         </tr>
     `).join('') || '<tr><td colspan="8" style="text-align:center;color:#666;">Nenhum pedido</td></tr>';
@@ -468,9 +470,11 @@ function renderProducts() {
             <td>${p.min_stock||5}</td>
             <td>${p.station==='cozinha'?'<span style="color:#3498db;font-weight:700;">Cozinha</span>':p.station==='churrasqueiro'?'<span style="color:#f39c12;font-weight:700;">Churrasqueiro</span>':p.station==='pizzaria'?'<span style="color:#9b59b6;font-weight:700;">Pizzaria</span>':'-'}</td>
             <td><label class="switch"><input type="checkbox" ${p.active?'checked':''} onchange="toggleProduct('${p.id}',this.checked)"><span class="slider"></span></label></td>
-            <td class="action-buttons">
-                <button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')">Editar</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">Excluir</button>
+            <td>
+                <div class="btn-group">
+                    <button class="btn btn-outline btn-xs" onclick="editProduct('${p.id}')">Editar</button>
+                    <button class="btn btn-danger btn-xs" onclick="deleteProduct('${p.id}')">Excluir</button>
+                </div>
             </td>
         </tr>
     `).join('') || '<tr><td colspan="10" style="text-align:center;color:#666;">Nenhum produto</td></tr>';
@@ -630,7 +634,7 @@ function renderTablesGrid() {
                             ${occupiedSince ? `<span style="color:#666;font-size:0.75rem;margin-left:8px;">desde ${fmtDate(occupiedSince)}</span>` : ''}
                         </div>
                     </div>
-                    <div style="display:flex;gap:8px;">
+                    <div class="btn-group">
                         <button class="btn btn-primary btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">+ Pedido</button>
                         <button class="btn btn-success btn-sm" onclick="closeTable('${t.id}')">Liberar</button>
                     </div>
@@ -672,7 +676,7 @@ function renderTablesGrid() {
                         <h2 style="margin:0;">Mesa ${t.number} <span style="font-size:0.75rem;color:#a0a0a0;">${t.capacity} lugares</span>${typeLabel}</h2>
                         <div style="font-size:0.85rem;color:#2ecc71;margin-top:4px;">Disponivel</div>
                     </div>
-                    <div style="display:flex;gap:8px;">
+                    <div class="btn-group">
                         <button class="btn btn-warning btn-sm" onclick="openNewOrderForTable('${t.id}',${t.number})">Ocupar</button>
                     </div>
                 </div>
@@ -769,7 +773,7 @@ function renderMaintenanceRows() {
                 <span style="color:#a0a0a0;font-size:0.8rem;">Lugares:</span>
                 <input type="number" min="1" max="50" value="${t.capacity}" class="maint-cap" data-id="${t.id}" style="width:60px;padding:6px;text-align:center;border:1px solid #444;border-radius:4px;background:#0d0d0d;color:#f5f5f5;font-size:0.9rem;">
             </div>
-            ${isOccupied ? '<span style="color:#e63946;font-size:0.75rem;margin-left:auto;">OCUPADA</span>' : `<button class="btn btn-danger btn-sm" style="margin-left:auto;" onclick="removeMaintenanceRow('${t.id}')">Remover</button>`}
+            ${isOccupied ? '<span style="color:#e63946;font-size:0.75rem;margin-left:auto;">OCUPADA</span>' : `<button class="btn btn-danger btn-xs" style="margin-left:auto;" onclick="removeMaintenanceRow('${t.id}')">Remover</button>`}
         </div>`;
     }).join('');
 
@@ -785,7 +789,7 @@ function renderMaintenanceRows() {
                 <option value="fisica" ${t.table_type==='fisica'?'selected':''}>Fixa</option>
                 <option value="virtual" ${t.table_type==='virtual'?'selected':''}>Virtual</option>
             </select>
-            <button class="btn btn-danger btn-sm" onclick="removeNewTableRow(${i})">X</button>
+            <button class="btn btn-danger btn-icon btn-xs" onclick="removeNewTableRow(${i})">X</button>
         </div>
     `).join('');
 
@@ -972,14 +976,14 @@ function renderComandaEditItems() {
     document.getElementById('comandaEditItems').innerHTML = comandaEditItems.map((it, i) => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #222;">
             <div style="display:flex;align-items:center;gap:8px;">
-                <button class="btn btn-secondary btn-sm" style="padding:2px 8px;" onclick="editComandaChangeQty(${i},-1)">-</button>
+                <button class="btn btn-secondary btn-icon btn-xs" onclick="editComandaChangeQty(${i},-1)">-</button>
                 <span>${it.quantity}</span>
-                <button class="btn btn-secondary btn-sm" style="padding:2px 8px;" onclick="editComandaChangeQty(${i},1)">+</button>
+                <button class="btn btn-secondary btn-icon btn-xs" onclick="editComandaChangeQty(${i},1)">+</button>
                 <strong>${it.name}</strong>
             </div>
             <div style="display:flex;align-items:center;gap:8px;">
                 <span style="color:#f39c12;font-weight:600;">${fmt(it.price * it.quantity)}</span>
-                <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:0.7rem;" onclick="editComandaRemoveItem(${i})">X</button>
+                <button class="btn btn-danger btn-icon btn-xs" onclick="editComandaRemoveItem(${i})">X</button>
             </div>
         </div>
     `).join('') || '<div style="color:#666;text-align:center;padding:12px;">Nenhum item</div>';
@@ -2013,10 +2017,12 @@ function renderUsers(filter='all') {
             </td>
             <td>${u.is_master?'<span class="badge badge-approved">Master</span>':'-'}</td>
             <td>${fmtDate(u.created_at)}</td>
-            <td class="action-buttons">
-                ${!u.approved&&!u.is_master?`<button class="btn btn-success btn-sm" onclick="approveUser('${u.id}')">Aprovar</button>`:''}
-                ${!u.approved&&!u.is_master?`<button class="btn btn-danger btn-sm" onclick="rejectUser('${u.id}')">Rejeitar</button>`:''}
-                ${u.approved&&!u.is_master?`<button class="btn btn-danger btn-sm" onclick="rejectUser('${u.id}')">Remover</button>`:''}
+            <td>
+                <div class="btn-group">
+                ${!u.approved&&!u.is_master?`<button class="btn btn-success btn-xs" onclick="approveUser('${u.id}')">Aprovar</button>`:''}
+                ${!u.approved&&!u.is_master?`<button class="btn btn-danger btn-xs" onclick="rejectUser('${u.id}')">Rejeitar</button>`:''}
+                ${u.approved&&!u.is_master?`<button class="btn btn-danger btn-xs" onclick="rejectUser('${u.id}')">Remover</button>`:''}
+                </div>
             </td>
         </tr>
     `).join('') || '<tr><td colspan="8" style="text-align:center;color:#666;">Nenhum usuario</td></tr>';
