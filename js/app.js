@@ -219,7 +219,7 @@ async function loadReadyItems() {
                     <td>Mesa ${item.table_number}</td>
                     <td>${item.product_name}</td>
                     <td>${item.quantity}x</td>
-                    <td>${item.station === 'cozinha' ? 'Cozinha' : 'Churrasqueiro'}</td>
+                    <td>${item.station === 'cozinha' ? 'Cozinha' : item.station === 'churrasqueiro' ? 'Churrasqueiro' : item.station === 'pizzaria' ? 'Pizzaria' : item.station}</td>
                     <td>${timeAgo}</td>
                     <td><button class="btn btn-primary btn-sm" onclick="acknowledgeReady('${item.id}')">Recebido</button></td>
                 </tr>
@@ -356,7 +356,8 @@ function openNewOrderModal() {
 
     document.getElementById('productGrid').innerHTML = allProducts.map(p => {
         const stationTag = p.station === 'cozinha' ? '<span style="font-size:0.65rem;color:#3498db;font-weight:700;display:block;">COZINHA</span>'
-            : p.station === 'churrasqueiro' ? '<span style="font-size:0.65rem;color:#f39c12;font-weight:700;display:block;">CHURRASQUEIRO</span>' : '';
+            : p.station === 'churrasqueiro' ? '<span style="font-size:0.65rem;color:#f39c12;font-weight:700;display:block;">CHURRASQUEIRO</span>'
+            : p.station === 'pizzaria' ? '<span style="font-size:0.65rem;color:#9b59b6;font-weight:700;display:block;">PIZZARIA</span>' : '';
         return `
         <div class="product-chip" onclick="addToOrder('${p.id}',${JSON.stringify(p.name).replace(/"/g,'&quot;')},${p.price})">
             ${stationTag}
@@ -468,7 +469,7 @@ function renderProducts() {
             <td>${fmt(p.cost||0)}</td>
             <td style="color:${p.stock<=p.min_stock?'#e63946':'#2ecc71'}"><strong>${p.stock}</strong></td>
             <td>${p.min_stock||5}</td>
-            <td>${p.station==='cozinha'?'<span style="color:#3498db;font-weight:700;">Cozinha</span>':p.station==='churrasqueiro'?'<span style="color:#f39c12;font-weight:700;">Churrasqueiro</span>':'-'}</td>
+            <td>${p.station==='cozinha'?'<span style="color:#3498db;font-weight:700;">Cozinha</span>':p.station==='churrasqueiro'?'<span style="color:#f39c12;font-weight:700;">Churrasqueiro</span>':p.station==='pizzaria'?'<span style="color:#9b59b6;font-weight:700;">Pizzaria</span>':'-'}</td>
             <td><label class="switch"><input type="checkbox" ${p.active?'checked':''} onchange="toggleProduct('${p.id}',this.checked)"><span class="slider"></span></label></td>
             <td class="action-buttons">
                 <button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')">Editar</button>
@@ -701,7 +702,8 @@ function openNewOrderForTable(tableId, tableNumber) {
 
     document.getElementById('productGrid').innerHTML = allProducts.map(p => {
         const stationTag = p.station === 'cozinha' ? '<span style="font-size:0.65rem;color:#3498db;font-weight:700;display:block;">COZINHA</span>'
-            : p.station === 'churrasqueiro' ? '<span style="font-size:0.65rem;color:#f39c12;font-weight:700;display:block;">CHURRASQUEIRO</span>' : '';
+            : p.station === 'churrasqueiro' ? '<span style="font-size:0.65rem;color:#f39c12;font-weight:700;display:block;">CHURRASQUEIRO</span>'
+            : p.station === 'pizzaria' ? '<span style="font-size:0.65rem;color:#9b59b6;font-weight:700;display:block;">PIZZARIA</span>' : '';
         return `
         <div class="product-chip" onclick="addToOrder('${p.id}',${JSON.stringify(p.name).replace(/"/g,'&quot;')},${p.price})">
             ${stationTag}

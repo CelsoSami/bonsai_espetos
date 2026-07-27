@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizzaria - Bonsai Espetos</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0d0d0d;color:#f5f5f5;min-height:100vh}
+        .header{background:#1a1a1a;border-bottom:2px solid #9b59b6;padding:16px 24px;display:flex;justify-content:space-between;align-items:center}
+        .header h1{font-size:1.4rem;letter-spacing:2px;color:#fff}.header h1 span{color:#e63946}
+        .header .station-badge{background:#9b59b6;color:#fff;padding:6px 16px;border-radius:20px;font-weight:700;font-size:0.9rem}
+        .stats{display:flex;gap:16px;padding:16px 24px}
+        .stat{background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:12px 20px;text-align:center;min-width:100px}
+        .stat .num{font-size:2rem;font-weight:700}.stat .lbl{font-size:0.7rem;text-transform:uppercase;color:#a0a0a0;letter-spacing:1px}
+        .stat.pending .num{color:#f39c12}.stat.ready .num{color:#2ecc71}
+        .orders{padding:0 24px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+        .order-card{background:#1e1e1e;border:1px solid #333;border-radius:10px;padding:16px;transition:all 0.3s}
+        .order-card.urgent{border-color:#e63946;box-shadow:0 0 15px rgba(230,57,70,0.2)}
+        .order-card .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+        .order-card .table-num{font-size:1.8rem;font-weight:700;color:#9b59b6}
+        .order-card .time{font-size:0.8rem;color:#a0a0a0}
+        .order-card .product{font-size:1.1rem;font-weight:600;margin-bottom:8px;color:#fff}
+        .order-card .qty{font-size:2rem;font-weight:700;color:#9b59b6;margin-bottom:12px}
+        .btn-ready{width:100%;padding:14px;border:none;border-radius:8px;background:#2ecc71;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;transition:all 0.3s;text-transform:uppercase;letter-spacing:1px}
+        .btn-ready:hover{background:#27ae60;transform:translateY(-1px)}
+        .btn-ready:active{transform:scale(0.98)}
+        .empty{text-align:center;padding:60px 24px;color:#666}
+        .empty h2{font-size:1.5rem;margin-bottom:8px;color:#a0a0a0}
+        .refresh-info{text-align:center;padding:8px;color:#666;font-size:0.75rem}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .order-card{animation:fadeIn 0.3s ease}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>BONSAI <span>ESPETOS</span></h1>
+        <div class="station-badge">PIZZARIA</div>
+    </div>
+    <div class="stats">
+        <div class="stat pending"><div class="num" id="pendingCount">0</div><div class="lbl">Pendentes</div></div>
+        <div class="stat ready"><div class="num" id="readyCount">0</div><div class="lbl">Prontos Hoje</div></div>
+    </div>
+    <div class="refresh-info">Atualiza automaticamente a cada 5s</div>
+    <div class="orders" id="ordersList"></div>
+    <div class="empty" id="emptyState" style="display:none;"><h2>Nenhum pedido pendente</h2><p>Aguardando pedidos...</p></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const STATION = 'pizzaria';
+        const SUPABASE_URL = 'https://yinkorfgtlgnldifefax.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_Y-XyitM05Ua50J2l5QASRQ_-wteoCPT';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function loadOrders() {
+            const { data: pending, error } = await sb.from('kitchen_orders')
+                .select('*')
+                .eq('station', STATION)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: true });
+            if (error) { console.error('Erro ao buscar kitchen_orders:', error); }
+
+            const today = new Date().toISOString().slice(0, 10);
+            const { data: readyToday } = await sb.from('kitchen_orders')
+                .select('id', { count: 'exact', head: true })
+                .eq('station', STATION)
+                .eq('status', 'ready')
+                .gte('completed_at', today);
+
+            const items = pending || [];
+            document.getElementById('pendingCount').textContent = items.length;
+            document.getElementById('readyCount').textContent = (readyToday || 0);
+
+            if (items.length === 0) {
+                document.getElementById('ordersList').innerHTML = '';
+                document.getElementById('emptyState').style.display = 'block';
+                return;
+            }
+            document.getElementById('emptyState').style.display = 'none';
+
+            document.getElementById('ordersList').innerHTML = items.map(item => {
+                const ago = Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000);
+                const urgent = ago >= 10;
+                return `
+                    <div class="order-card ${urgent ? 'urgent' : ''}">
+                        <div class="top">
+                            <div class="table-num">Mesa ${item.table_number}</div>
+                            <div class="time">${ago} min</div>
+                        </div>
+                        <div class="product">${item.product_name}</div>
+                        <div class="qty">${item.quantity}x</div>
+                        <button class="btn-ready" onclick="markReady('${item.id}')">PRONTO</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function markReady(id) {
+            await sb.from('kitchen_orders').update({
+                status: 'ready',
+                completed_at: new Date().toISOString()
+            }).eq('id', id);
+            loadOrders();
+        }
+
+        loadOrders();
+        setInterval(loadOrders, 5000);
+    </script>
+</body>
+</html>
