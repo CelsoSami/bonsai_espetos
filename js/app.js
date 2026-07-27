@@ -10,8 +10,6 @@ let currentOrderItems = [];
 let selectedTable = null;
 let currentOrderFilter = 'all';
 let performanceChart = null;
-let salesChart = null;
-let orderStatusChart = null;
 
 // ========== INICIALIZACAO ==========
 document.addEventListener('DOMContentLoaded', async () => {
@@ -794,44 +792,617 @@ async function saveCashflow() {
 }
 
 // ========== RELATORIOS ==========
+let reportData = {};
+let currentReportTab = 'general';
+
+function showReportTab(tab, el) {
+    currentReportTab = tab;
+    document.querySelectorAll('#section-reports .tab').forEach(t => t.classList.remove('active'));
+    if (el) el.classList.add('active');
+    renderReportTab();
+}
+
+function getDateFilter() {
+    const v = document.getElementById('reportPeriod').value;
+    if (v === 'all' || v === 'today') return v;
+    const d = new Date();
+    d.setDate(d.getDate() - parseInt(v));
+    return d.toISOString().slice(0,10);
+}
+
+function filterByDate(arr, field='created_at') {
+    const df = getDateFilter();
+    if (df === 'all') return arr;
+    if (df === 'today') {
+        const today = new Date().toISOString().slice(0,10);
+        return arr.filter(x => (x[field]||'').startsWith(today));
+    }
+    return arr.filter(x => (x[field]||'') >= df);
+}
+
 async function loadReports() {
-    const { data: orders } = await sb.from('orders').select('*');
-    const all = orders || [];
-    const delivered = all.filter(o => o.status==='delivered').length;
-    const pending = all.filter(o => o.status==='pending').length;
-    const preparing = all.filter(o => o.status==='preparing').length;
-    const totalRev = all.filter(o => o.status==='delivered').reduce((s,o) => s+parseFloat(o.total||0), 0);
+    const [oRes, cRes, pRes, sRes, uRes, tRes] = await Promise.all([
+        sb.from('orders').select('*').order('created_at', { ascending: false }),
+        sb.from('cashflow').select('*').order('created_at', { ascending: false }),
+        sb.from('products').select('*'),
+        sb.from('stock_history').select('*').order('created_at', { ascending: false }),
+        sb.from('users').select('*'),
+        sb.from('tables').select('*')
+    ]);
+
+    const allOrders = oRes.data || [];
+    const allCash = cRes.data || [];
+    const allProducts = pRes.data || [];
+    const allStock = sRes.data || [];
+    const allUsers = uRes.data || [];
+    const allTables = tRes.data || [];
+
+    const filteredOrders = filterByDate(allOrders);
+    const filteredCash = filterByDate(allCash);
+
+    const delivered = filteredOrders.filter(o => o.status === 'delivered');
+    const cancelled = filteredOrders.filter(o => o.status === 'cancelled');
+    const pending = filteredOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
+
+    const totalRevenue = delivered.reduce((s,o) => s + parseFloat(o.total||0), 0);
+    const totalCancelledValue = cancelled.reduce((s,o) => s + parseFloat(o.total||0), 0);
+    const avgTicket = delivered.length > 0 ? totalRevenue / delivered.length : 0;
+
+    const cashIn = filteredCash.filter(c => c.type === 'entrada').reduce((s,c) => s + parseFloat(c.amount||0), 0);
+    const cashOut = filteredCash.filter(c => c.type === 'saida').reduce((s,c) => s + parseFloat(c.amount||0), 0);
+
+    const totalCost = delivered.reduce((s,o) => {
+        return s + (o.items||[]).reduce((si, it) => {
+            const prod = allProducts.find(p => p.id === it.product_id);
+            return si + (parseFloat(prod?.cost||0) * it.quantity);
+        }, 0);
+    }, 0);
+
+    const totalItems = delivered.reduce((s,o) => s + (o.items||[]).reduce((si,it) => si + it.quantity, 0), 0);
+
+    reportData = { allOrders, filteredOrders, filteredCash, allCash, allProducts, allStock, allUsers, allTables,
+        delivered, cancelled, pending, totalRevenue, totalCancelledValue, avgTicket,
+        cashIn, cashOut, totalCost, totalItems };
+    renderReportTab();
+}
+
+function renderReportTab() {
+    const el = document.getElementById('reportContent');
+    switch(currentReportTab) {
+        case 'general': el.innerHTML = reportGeneral(); break;
+        case 'cash': el.innerHTML = reportCash(); break;
+        case 'cancellations': el.innerHTML = reportCancellations(); break;
+        case 'staff': el.innerHTML = reportStaff(); break;
+        case 'products': el.innerHTML = reportProducts(); break;
+        case 'alerts': el.innerHTML = reportAlerts(); break;
+    }
+}
+
+function reportGeneral() {
+    const d = reportData;
+    const profit = d.totalRevenue - d.totalCost;
+    const margin = d.totalRevenue > 0 ? ((profit / d.totalRevenue) * 100).toFixed(1) : 0;
     const today = new Date().toISOString().slice(0,10);
-    const todayRev = all.filter(o => o.status==='delivered' && (o.created_at||'').startsWith(today)).reduce((s,o) => s+parseFloat(o.total||0), 0);
+    const todayOrders = d.delivered.filter(o => (o.created_at||'').startsWith(today));
+    const todayRevenue = todayOrders.reduce((s,o) => s + parseFloat(o.total||0), 0);
 
-    document.getElementById('reportStats').innerHTML = `
-        <div class="stat-card green"><div class="stat-label">Receita Total</div><div class="stat-value">${fmt(totalRev)}</div></div>
-        <div class="stat-card red"><div class="stat-label">Total Pedidos</div><div class="stat-value">${all.length}</div></div>
-        <div class="stat-card blue"><div class="stat-label">Entregues</div><div class="stat-value">${delivered}</div></div>
-        <div class="stat-card yellow"><div class="stat-label">Receita Hoje</div><div class="stat-value">${fmt(todayRev)}</div></div>
-    `;
+    const ticketByDay = {};
+    d.delivered.forEach(o => {
+        const day = (o.created_at||'').slice(0,10);
+        if (!ticketByDay[day]) ticketByDay[day] = { count: 0, total: 0 };
+        ticketByDay[day].count++;
+        ticketByDay[day].total += parseFloat(o.total||0);
+    });
+    const days = Object.keys(ticketByDay).sort().slice(-14);
+    const dailyData = days.map(day => ({
+        day,
+        count: ticketByDay[day].count,
+        total: ticketByDay[day].total,
+        avg: ticketByDay[day].total / ticketByDay[day].count
+    }));
 
-    const ctx1 = document.getElementById('salesChart');
-    if (salesChart) salesChart.destroy();
-    salesChart = new Chart(ctx1, {
-        type: 'bar',
-        data: {
-            labels: ['Hoje', 'Total'],
-            datasets: [{ label: 'Receita (R$)', data: [todayRev, totalRev], backgroundColor: ['#e63946','#2ecc71'], borderWidth: 0, borderRadius: 6 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#a0a0a0' } } }, scales: { y: { ticks: { color: '#a0a0a0' }, grid: { color: '#333' } }, x: { ticks: { color: '#a0a0a0' }, grid: { display: false } } } }
+    return `
+        <div class="stats-grid" style="margin-bottom:16px;">
+            <div class="stat-card green"><div class="stat-label">Receita Total</div><div class="stat-value">${fmt(d.totalRevenue)}</div></div>
+            <div class="stat-card red"><div class="stat-label">Custo Total</div><div class="stat-value">${fmt(d.totalCost)}</div></div>
+            <div class="stat-card blue"><div class="stat-label">Lucro Bruto</div><div class="stat-value">${fmt(profit)}</div></div>
+            <div class="stat-card yellow"><div class="stat-label">Margem</div><div class="stat-value">${margin}%</div></div>
+            <div class="stat-card green"><div class="stat-label">Receita Hoje</div><div class="stat-value">${fmt(todayRevenue)}</div></div>
+            <div class="stat-card blue"><div class="stat-label">Ticket Medio</div><div class="stat-value">${fmt(d.avgTicket)}</div></div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><h2>Resumo Geral</h2></div>
+                <div class="card-body">
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Total Pedidos</span><strong>${d.filteredOrders.length}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Entregues</span><strong style="color:#2ecc71;">${d.delivered.length}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Cancelados</span><strong style="color:#e63946;">${d.cancelled.length}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Pendentes/Preparando</span><strong style="color:#f39c12;">${d.pending.length}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Total Itens Vendidos</span><strong>${d.totalItems}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Ticket Medio</span><strong>${fmt(d.avgTicket)}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Valor Cancelado</span><strong style="color:#e63946;">${fmt(d.totalCancelledValue)}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;"><span>Taxa Cancelamento</span><strong style="color:#e63946;">${d.filteredOrders.length > 0 ? ((d.cancelled.length / d.filteredOrders.length)*100).toFixed(1) : 0}%</strong></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h2>Fluxo de Caixa Resumido</h2></div>
+                <div class="card-body">
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Entradas (Caixa)</span><strong style="color:#2ecc71;">${fmt(d.cashIn)}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Saidas (Caixa)</span><strong style="color:#e63946;">${fmt(d.cashOut)}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Saldo Caixa</span><strong>${fmt(d.cashIn - d.cashOut)}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Receita Pedidos</span><strong style="color:#2ecc71;">${fmt(d.totalRevenue)}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Custo Produtos</span><strong style="color:#e63946;">${fmt(d.totalCost)}</strong></div>
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;"><span>Lucro Bruto</span><strong style="color:${profit>=0?'#2ecc71':'#e63946'};">${fmt(profit)}</strong></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+            <div class="card-header"><h2>Desempenho Diario</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Dia</th><th>Pedidos</th><th>Receita</th><th>Ticket Medio</th></tr></thead>
+                        <tbody>
+                            ${dailyData.reverse().map(r => `<tr><td>${r.day}</td><td>${r.count}</td><td>${fmt(r.total)}</td><td>${fmt(r.avg)}</td></tr>`).join('')}
+                            ${dailyData.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:#666;">Sem dados</td></tr>' : ''}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+}
+
+function reportCash() {
+    const d = reportData;
+    const entries = d.filteredCash;
+    const delivered = d.delivered;
+    const expectedCash = delivered.reduce((s,o) => s + parseFloat(o.total||0), 0);
+    const actualCash = entries.filter(c => c.type === 'entrada').reduce((s,c) => s + parseFloat(c.amount||0), 0);
+    const discrepancy = actualCash - expectedCash;
+    const totalSaidas = entries.filter(c => c.type === 'saida').reduce((s,c) => s + parseFloat(c.amount||0), 0);
+
+    const saidasByCategory = {};
+    entries.filter(c => c.type === 'saida').forEach(c => {
+        const cat = c.category || 'Sem Categoria';
+        if (!saidasByCategory[cat]) saidasByCategory[cat] = 0;
+        saidasByCategory[cat] += parseFloat(c.amount||0);
     });
 
-    const ctx2 = document.getElementById('orderStatusChart');
-    if (orderStatusChart) orderStatusChart.destroy();
-    orderStatusChart = new Chart(ctx2, {
-        type: 'pie',
-        data: {
-            labels: ['Pendentes','Preparando','Entregues'],
-            datasets: [{ data: [pending, preparing, delivered], backgroundColor: ['#f39c12','#3498db','#2ecc71'], borderWidth: 0 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0a0' } } } }
+    const entradasByCategory = {};
+    entries.filter(c => c.type === 'entrada').forEach(c => {
+        const cat = c.category || 'Sem Categoria';
+        if (!entradasByCategory[cat]) entradasByCategory[cat] = 0;
+        entradasByCategory[cat] += parseFloat(c.amount||0);
     });
+
+    const largeWithdrawals = entries.filter(c => c.type === 'saida' && parseFloat(c.amount||0) > 100);
+
+    return `
+        <div class="stats-grid" style="margin-bottom:16px;">
+            <div class="stat-card green"><div class="stat-label">Entradas Caixa</div><div class="stat-value">${fmt(actualCash)}</div></div>
+            <div class="stat-card red"><div class="stat-label">Saidas Caixa</div><div class="stat-value">${fmt(totalSaidas)}</div></div>
+            <div class="stat-card blue"><div class="stat-label">Saldo</div><div class="stat-value">${fmt(actualCash - totalSaidas)}</div></div>
+            <div class="stat-card" style="border-color:${Math.abs(discrepancy) > 50 ? '#e63946' : '#333'};"><div class="stat-label">Divergencia</div><div class="stat-value" style="color:${discrepancy < 0 ? '#e63946' : '#2ecc71'};">${fmt(discrepancy)}</div></div>
+        </div>
+
+        <div class="card" style="border-color:${Math.abs(discrepancy) > 50 ? '#e63946' : '#333'};margin-bottom:16px;">
+            <div class="card-header"><h2 style="color:${Math.abs(discrepancy) > 50 ? '#e63946' : '#fff'};">Controle de Divergencia</h2></div>
+            <div class="card-body">
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Receita Esperada (Pedidos Entregues)</span><strong>${fmt(expectedCash)}</strong></div>
+                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Entradas Registradas no Caixa</span><strong>${fmt(actualCash)}</strong></div>
+                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>Diferenca</span><strong style="color:${discrepancy < 0 ? '#e63946' : '#2ecc71'};">${fmt(discrepancy)}</strong></div>
+                    <div style="padding:8px;border-radius:6px;background:${Math.abs(discrepancy) > 50 ? 'rgba(230,57,70,0.1)' : 'rgba(46,204,113,0.1)'};border:1px solid ${Math.abs(discrepancy) > 50 ? '#e63946' : '#2ecc71'};">
+                        ${Math.abs(discrepancy) > 50
+                            ? '<span style="color:#e63946;font-weight:700;">ATENCAO: Divergencia significativa detectada! Verifique as movimentacoes de caixa.</span>'
+                            : '<span style="color:#2ecc71;">Caixa dentro do esperado.</span>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><h2>Saidas por Categoria</h2></div>
+                <div class="card-body">
+                    ${Object.entries(saidasByCategory).sort((a,b) => b[1]-a[1]).map(([cat, val]) => `
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>${cat}</span><strong style="color:#e63946;">${fmt(val)}</strong></div>
+                    `).join('') || '<div style="color:#666;text-align:center;">Sem saidas</div>'}
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h2>Entradas por Categoria</h2></div>
+                <div class="card-body">
+                    ${Object.entries(entradasByCategory).sort((a,b) => b[1]-a[1]).map(([cat, val]) => `
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>${cat}</span><strong style="color:#2ecc71;">${fmt(val)}</strong></div>
+                    `).join('') || '<div style="color:#666;text-align:center;">Sem entradas</div>'}
+                </div>
+            </div>
+        </div>
+
+        ${largeWithdrawals.length > 0 ? `
+        <div class="card" style="margin-top:16px;border-color:#f39c12;">
+            <div class="card-header"><h2 style="color:#f39c12;">Saidas Acima de R$ 100,00</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Responsavel</th></tr></thead>
+                        <tbody>
+                            ${largeWithdrawals.map(c => `<tr><td>${fmtDate(c.created_at)}</td><td>${c.description}</td><td>${c.category||'-'}</td><td style="color:#e63946;font-weight:700;">${fmt(c.amount)}</td><td>${c.user_name||'-'}</td></tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>` : ''}
+
+        <div class="card" style="margin-top:16px;">
+            <div class="card-header"><h2>Todas as Movimentacoes</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Data</th><th>Tipo</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Responsavel</th></tr></thead>
+                        <tbody>
+                            ${entries.slice(0, 50).map(c => `<tr>
+                                <td>${fmtDate(c.created_at)}</td>
+                                <td>${c.type==='entrada'?'<span style="color:#2ecc71;">Entrada</span>':'<span style="color:#e63946;">Saida</span>'}</td>
+                                <td>${c.description}</td>
+                                <td>${c.category||'-'}</td>
+                                <td style="color:${c.type==='entrada'?'#2ecc71':'#e63946'};font-weight:700;">${c.type==='entrada'?'+':'-'} ${fmt(c.amount)}</td>
+                                <td>${c.user_name||'-'}</td>
+                            </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#666;">Sem movimentacoes</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+}
+
+function reportCancellations() {
+    const d = reportData;
+    const cancelled = d.cancelled;
+    const totalValue = d.totalCancelledValue;
+    const totalOrders = d.filteredOrders.length;
+    const cancelRate = totalOrders > 0 ? ((cancelled.length / totalOrders)*100).toFixed(1) : 0;
+
+    const byUser = {};
+    cancelled.forEach(o => {
+        const name = o.user_name || 'Desconhecido';
+        if (!byUser[name]) byUser[name] = { count: 0, value: 0 };
+        byUser[name].count++;
+        byUser[name].value += parseFloat(o.total||0);
+    });
+
+    const byHour = {};
+    cancelled.forEach(o => {
+        const h = new Date(o.created_at).getHours();
+        if (!byHour[h]) byHour[h] = 0;
+        byHour[h]++;
+    });
+
+    const byTable = {};
+    cancelled.forEach(o => {
+        const t = o.table_id || 'N/A';
+        if (!byTable[t]) byTable[t] = { count: 0, value: 0 };
+        byTable[t].count++;
+        byTable[t].value += parseFloat(o.total||0);
+    });
+
+    return `
+        <div class="stats-grid" style="margin-bottom:16px;">
+            <div class="stat-card red"><div class="stat-label">Total Cancelados</div><div class="stat-value">${cancelled.length}</div></div>
+            <div class="stat-card red"><div class="stat-label">Valor Cancelado</div><div class="stat-value">${fmt(totalValue)}</div></div>
+            <div class="stat-card yellow"><div class="stat-label">Taxa Cancelamento</div><div class="stat-value">${cancelRate}%</div></div>
+            <div class="stat-card blue"><div class="stat-label">Pedidos no Periodo</div><div class="stat-value">${totalOrders}</div></div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><h2>Cancelamentos por Atendente</h2></div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table>
+                            <thead><tr><th>Atendente</th><th>Qtd</th><th>Valor</th></tr></thead>
+                            <tbody>
+                                ${Object.entries(byUser).sort((a,b) => b[1].count - a[1].count).map(([name, data]) => `
+                                    <tr><td>${name}</td><td>${data.count}</td><td style="color:#e63946;font-weight:700;">${fmt(data.value)}</td></tr>
+                                `).join('') || '<tr><td colspan="3" style="text-align:center;color:#666;">Sem cancelamentos</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h2>Cancelamentos por Hora</h2></div>
+                <div class="card-body">
+                    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;">
+                        ${Array.from({length:24}, (_,i) => {
+                            const count = byHour[i] || 0;
+                            const maxH = Math.max(...Object.values(byHour), 1);
+                            const intensity = count / maxH;
+                            return `<div style="text-align:center;padding:6px;border-radius:4px;background:rgba(230,57,70,${intensity * 0.6});font-size:0.7rem;"><div style="color:#a0a0a0;">${i.toString().padStart(2,'0')}h</div><div style="font-weight:700;">${count}</div></div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+            <div class="card-header"><h2>Pedidos Cancelados (Detalhado)</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Data</th><th>Pedido</th><th>Mesa</th><th>Itens</th><th>Valor</th><th>Responsavel</th></tr></thead>
+                        <tbody>
+                            ${cancelled.slice(0, 30).map(o => `<tr>
+                                <td>${fmtDate(o.created_at)}</td>
+                                <td>#${(o.id||'').slice(0,8)}</td>
+                                <td>${o.table_id ? o.table_id.slice(0,8) : '-'}</td>
+                                <td>${(o.items||[]).length} itens</td>
+                                <td style="color:#e63946;font-weight:700;">${fmt(o.total)}</td>
+                                <td>${o.user_name||'-'}</td>
+                            </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#666;">Sem cancelamentos</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+}
+
+function reportStaff() {
+    const d = reportData;
+    const staff = {};
+    d.delivered.forEach(o => {
+        const name = o.user_name || 'Desconhecido';
+        if (!staff[name]) staff[name] = { orders: 0, revenue: 0, items: 0, cancelled: 0, cancelValue: 0 };
+        staff[name].orders++;
+        staff[name].revenue += parseFloat(o.total||0);
+        staff[name].items += (o.items||[]).reduce((s,it) => s + it.quantity, 0);
+    });
+    d.cancelled.forEach(o => {
+        const name = o.user_name || 'Desconhecido';
+        if (!staff[name]) staff[name] = { orders: 0, revenue: 0, items: 0, cancelled: 0, cancelValue: 0 };
+        staff[name].cancelled++;
+        staff[name].cancelValue += parseFloat(o.total||0);
+    });
+
+    const entries = d.filteredCash;
+    const byUserCash = {};
+    entries.forEach(c => {
+        const name = c.user_name || 'Desconhecido';
+        if (!byUserCash[name]) byUserCash[name] = { entradas: 0, saidas: 0 };
+        if (c.type === 'entrada') byUserCash[name].entradas += parseFloat(c.amount||0);
+        else byUserCash[name].saidas += parseFloat(c.amount||0);
+    });
+
+    return `
+        <div class="card">
+            <div class="card-header"><h2>Desempenho por Atendente</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Atendente</th><th>Pedidos</th><th>Receita</th><th>Ticket Medio</th><th>Itens</th><th>Cancelamentos</th><th>Val. Cancelado</th></tr></thead>
+                        <tbody>
+                            ${Object.entries(staff).sort((a,b) => b[1].revenue - a[1].revenue).map(([name, s]) => {
+                                const avg = s.orders > 0 ? s.revenue / s.orders : 0;
+                                const cancelRate = (s.orders + s.cancelled) > 0 ? ((s.cancelled / (s.orders + s.cancelled))*100).toFixed(1) : 0;
+                                return `<tr>
+                                    <td><strong>${name}</strong></td>
+                                    <td>${s.orders}</td>
+                                    <td>${fmt(s.revenue)}</td>
+                                    <td>${fmt(avg)}</td>
+                                    <td>${s.items}</td>
+                                    <td style="color:${s.cancelled > 3 ? '#e63946' : '#f5f5f5'};">${s.cancelled} (${cancelRate}%)</td>
+                                    <td style="color:#e63946;">${fmt(s.cancelValue)}</td>
+                                </tr>`;
+                            }).join('') || '<tr><td colspan="7" style="text-align:center;color:#666;">Sem dados</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+            <div class="card-header"><h2>Movimentacoes de Caixa por Atendente</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Atendente</th><th>Entradas</th><th>Saidas</th><th>Saldo</th></tr></thead>
+                        <tbody>
+                            ${Object.entries(byUserCash).sort((a,b) => (b[1].entradas - b[1].saidas) - (a[1].entradas - a[1].saidas)).map(([name, c]) => `
+                                <tr>
+                                    <td><strong>${name}</strong></td>
+                                    <td style="color:#2ecc71;">${fmt(c.entradas)}</td>
+                                    <td style="color:#e63946;">${fmt(c.saidas)}</td>
+                                    <td style="color:${c.entradas-c.saidas>=0?'#2ecc71':'#e63946'};font-weight:700;">${fmt(c.entradas - c.saidas)}</td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="4" style="text-align:center;color:#666;">Sem dados</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+}
+
+function reportProducts() {
+    const d = reportData;
+    const productSales = {};
+    d.delivered.forEach(o => {
+        (o.items||[]).forEach(it => {
+            if (!productSales[it.product_id]) productSales[it.product_id] = { name: it.name, qty: 0, revenue: 0 };
+            productSales[it.product_id].qty += it.quantity;
+            productSales[it.product_id].revenue += it.price * it.quantity;
+        });
+    });
+
+    const sorted = Object.entries(productSales).sort((a,b) => b[1].revenue - a[1].revenue);
+    const top5 = sorted.slice(0,5);
+    const bottom5 = sorted.slice(-5).reverse();
+
+    const categoryRevenue = {};
+    d.delivered.forEach(o => {
+        (o.items||[]).forEach(it => {
+            const prod = d.allProducts.find(p => p.id === it.product_id);
+            const cat = prod?.category || 'Outros';
+            if (!categoryRevenue[cat]) categoryRevenue[cat] = { qty: 0, revenue: 0 };
+            categoryRevenue[cat].qty += it.quantity;
+            categoryRevenue[cat].revenue += it.price * it.quantity;
+        });
+    });
+
+    return `
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><h2 style="color:#2ecc71;">Top 5 Mais Vendidos</h2></div>
+                <div class="card-body">
+                    ${top5.map(([id, p], i) => `
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #222;">
+                            <span><span style="color:#a0a0a0;">${i+1}.</span> <strong>${p.name}</strong></span>
+                            <span style="color:#2ecc71;font-weight:700;">${p.qty}x - ${fmt(p.revenue)}</span>
+                        </div>
+                    `).join('') || '<div style="color:#666;text-align:center;">Sem dados</div>'}
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h2 style="color:#e63946;">Top 5 Menos Vendidos</h2></div>
+                <div class="card-body">
+                    ${bottom5.map(([id, p], i) => `
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #222;">
+                            <span><span style="color:#a0a0a0;">${i+1}.</span> <strong>${p.name}</strong></span>
+                            <span style="color:#f39c12;font-weight:700;">${p.qty}x - ${fmt(p.revenue)}</span>
+                        </div>
+                    `).join('') || '<div style="color:#666;text-align:center;">Sem dados</div>'}
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+            <div class="card-header"><h2>Receita por Categoria</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Categoria</th><th>Itens Vendidos</th><th>Receita</th><th>% do Total</th></tr></thead>
+                        <tbody>
+                            ${Object.entries(categoryRevenue).sort((a,b) => b[1].revenue - a[1].revenue).map(([cat, data]) => {
+                                const pct = d.totalRevenue > 0 ? ((data.revenue / d.totalRevenue)*100).toFixed(1) : 0;
+                                return `<tr><td><strong>${cat}</strong></td><td>${data.qty}</td><td>${fmt(data.revenue)}</td><td>${pct}%</td></tr>`;
+                            }).join('') || '<tr><td colspan="4" style="text-align:center;color:#666;">Sem dados</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+            <div class="card-header"><h2>Todos os Produtos Vendidos</h2></div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Produto</th><th>Qtd Vendida</th><th>Receita</th><th>Custo Unit.</th><th>Lucro</th><th>Margem</th></tr></thead>
+                        <tbody>
+                            ${sorted.map(([id, p]) => {
+                                const prod = d.allProducts.find(x => x.id === id);
+                                const cost = parseFloat(prod?.cost||0) * p.qty;
+                                const profit = p.revenue - cost;
+                                const margin = p.revenue > 0 ? ((profit/p.revenue)*100).toFixed(1) : 0;
+                                return `<tr>
+                                    <td><strong>${p.name}</strong></td>
+                                    <td>${p.qty}</td>
+                                    <td>${fmt(p.revenue)}</td>
+                                    <td>${fmt(prod?.cost||0)}</td>
+                                    <td style="color:${profit>=0?'#2ecc71':'#e63946'};">${fmt(profit)}</td>
+                                    <td>${margin}%</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+}
+
+function reportAlerts() {
+    const d = reportData;
+    const alerts = [];
+
+    const cancelRate = d.filteredOrders.length > 0 ? (d.cancelled.length / d.filteredOrders.length) * 100 : 0;
+    if (cancelRate > 10) alerts.push({ level: 'high', title: 'Taxa de cancelamento alta', desc: `${cancelRate.toFixed(1)}% dos pedidos foram cancelados (${d.cancelled.length}/${d.filteredOrders.length}). Valor total: ${fmt(d.totalCancelledValue)}` });
+
+    const discrepancy = d.cashIn - d.totalRevenue;
+    if (Math.abs(discrepancy) > 50) alerts.push({ level: 'high', title: 'Divergencia no caixa', desc: `Diferenca de ${fmt(discrepancy)} entre entradas no caixa (${fmt(d.cashIn)}) e receita de pedidos (${fmt(d.totalRevenue)})` });
+
+    const staff = {};
+    d.cancelled.forEach(o => {
+        const name = o.user_name || 'Desconhecido';
+        if (!staff[name]) staff[name] = { orders: 0, cancelled: 0 };
+        staff[name].cancelled++;
+    });
+    d.delivered.forEach(o => {
+        const name = o.user_name || 'Desconhecido';
+        if (!staff[name]) staff[name] = { orders: 0, cancelled: 0 };
+        staff[name].orders++;
+    });
+    Object.entries(staff).forEach(([name, s]) => {
+        const total = s.orders + s.cancelled;
+        const rate = total > 0 ? (s.cancelled / total) * 100 : 0;
+        if (rate > 20 && s.cancelled >= 3) alerts.push({ level: 'medium', title: `Atendente com muitos cancelamentos: ${name}`, desc: `${s.cancelled} cancelamentos de ${total} pedidos (${rate.toFixed(1)}%)` });
+    });
+
+    const largeOrders = d.delivered.filter(o => parseFloat(o.total||0) > 200);
+    if (largeOrders.length > 0) alerts.push({ level: 'low', title: `${largeOrders.length} pedido(s) acima de R$ 200,00`, desc: 'Verifique se os valores estao corretos.' });
+
+    const saidas = d.filteredCash.filter(c => c.type === 'saida');
+    const largeSaidas = saidas.filter(c => parseFloat(c.amount||0) > 200);
+    if (largeSaidas.length > 0) alerts.push({ level: 'high', title: `${largeSaidas.length} saida(s) acima de R$ 200,00`, desc: largeSaidas.map(c => `${c.description}: ${fmt(c.amount)} (${c.user_name||'?'})`).join('; ') });
+
+    const nightOrders = d.delivered.filter(o => {
+        const h = new Date(o.created_at).getHours();
+        return h >= 0 && h < 6;
+    });
+    if (nightOrders.length > 3) alerts.push({ level: 'medium', title: `${nightOrders.length} pedidos entre 00h-06h`, desc: `Valor total: ${fmt(nightOrders.reduce((s,o) => s + parseFloat(o.total||0), 0))}. Verifique se e operacao normal.` });
+
+    const pending = d.filteredOrders.filter(o => o.status === 'pending');
+    if (pending.length > 5) alerts.push({ level: 'medium', title: `${pending.length} pedidos pendentes`, desc: 'Ha muitos pedidos pendentes. Verifique se nao foram abandonados.' });
+
+    d.delivered.forEach(o => {
+        (o.items||[]).forEach(it => {
+            const prod = d.allProducts.find(p => p.id === it.product_id);
+            if (prod && prod.cost > 0) {
+                const costPct = (prod.cost / it.price) * 100;
+                if (costPct > 80) alerts.push({ level: 'low', title: `Produto com margem baixa: ${it.name}`, desc: `Custo ${costPct.toFixed(0)}% do preco de venda (${fmt(prod.cost)} / ${fmt(it.price)})` });
+            }
+        });
+    });
+
+    const levelOrder = { high: 0, medium: 1, low: 2 };
+    alerts.sort((a,b) => levelOrder[a.level] - levelOrder[b.level]);
+
+    const levelColor = { high: '#e63946', medium: '#f39c12', low: '#3498db' };
+    const levelLabel = { high: 'ALTO', medium: 'MEDIO', low: 'BAIXO' };
+
+    return `
+        <div class="stats-grid" style="margin-bottom:16px;">
+            <div class="stat-card red"><div class="stat-label">Alertas Altos</div><div class="stat-value">${alerts.filter(a => a.level==='high').length}</div></div>
+            <div class="stat-card yellow"><div class="stat-label">Alertas Medios</div><div class="stat-value">${alerts.filter(a => a.level==='medium').length}</div></div>
+            <div class="stat-card blue"><div class="stat-label">Alertas Baixos</div><div class="stat-value">${alerts.filter(a => a.level==='low').length}</div></div>
+        </div>
+
+        ${alerts.length === 0 ? '<div class="card"><div class="card-body" style="text-align:center;color:#2ecc71;"><h2>Nenhum alerta detectado</h2><p>O sistema nao identificou irregularidades no periodo.</p></div></div>' :
+
+        alerts.map(a => `
+            <div class="card" style="margin-bottom:12px;border-color:${levelColor[a.level]};">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                    <h2>${a.title}</h2>
+                    <span style="background:${levelColor[a.level]};color:#fff;padding:4px 10px;border-radius:12px;font-size:0.7rem;font-weight:700;">${levelLabel[a.level]}</span>
+                </div>
+                <div class="card-body" style="color:#a0a0a0;">${a.desc}</div>
+            </div>
+        `).join('')}`;
 }
 
 // ========== USUARIOS (APENAS MASTER) ==========

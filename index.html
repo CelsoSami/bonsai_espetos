@@ -270,16 +270,27 @@
 
                     <!-- RELATORIOS -->
                     <div id="section-reports" class="section" style="display:none;">
-                        <div class="page-header"><h1>Relatorios</h1></div>
-                        <div class="stats-grid" id="reportStats"></div>
-                        <div class="card">
-                            <div class="card-header"><h2>Vendas</h2></div>
-                            <div class="card-body"><div class="chart-container"><canvas id="salesChart"></canvas></div></div>
+                        <div class="page-header">
+                            <h1>Relatorios</h1>
+                            <div style="display:flex;gap:8px;">
+                                <select id="reportPeriod" onchange="loadReports()" style="padding:8px 12px;border-radius:6px;border:1px solid #333;background:#1a1a1a;color:#f5f5f5;font-size:0.85rem;">
+                                    <option value="today">Hoje</option>
+                                    <option value="7">Ultimos 7 dias</option>
+                                    <option value="30" selected>Ultimos 30 dias</option>
+                                    <option value="all">Tudo</option>
+                                </select>
+                                <button class="btn btn-primary btn-sm" onclick="loadReports()">Atualizar</button>
+                            </div>
                         </div>
-                        <div class="card">
-                            <div class="card-header"><h2>Status dos Pedidos</h2></div>
-                            <div class="card-body"><div class="chart-container"><canvas id="orderStatusChart"></canvas></div></div>
+                        <div class="tabs">
+                            <button class="tab active" onclick="showReportTab('general',this)">Balanco Geral</button>
+                            <button class="tab" onclick="showReportTab('cash',this)">Controle Caixa</button>
+                            <button class="tab" onclick="showReportTab('cancellations',this)">Cancelamentos</button>
+                            <button class="tab" onclick="showReportTab('staff',this)">Atendentes</button>
+                            <button class="tab" onclick="showReportTab('products',this)">Produtos</button>
+                            <button class="tab" onclick="showReportTab('alerts',this)" style="color:#e63946;">Alertas</button>
                         </div>
+                        <div id="reportContent"></div>
                     </div>
 
                     <!-- USUARIOS -->
