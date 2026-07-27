@@ -701,7 +701,8 @@ function renderTablesGrid() {
     });
 }
 
-function openNewOrderForTable(tableId, tableNumber) {
+async function openNewOrderForTable(tableId, tableNumber) {
+    if (!allProducts.length) { const { data } = await sb.from('products').select('*').order('name'); allProducts = data || []; }
     selectedTable = allTables.find(t => t.id === tableId) || { id: tableId, number: tableNumber };
     currentOrderItems = [];
     document.getElementById('comandaName').value = '';
