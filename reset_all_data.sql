@@ -4,6 +4,9 @@
 -- ATENCAO: Isso apaga TODOS os dados!
 -- ============================================
 
+-- Garantir que a coluna table_type existe
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS table_type TEXT DEFAULT 'fisica';
+
 -- Desabilitar RLS temporariamente para truncar
 ALTER TABLE IF EXISTS orders DISABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS kitchen_orders DISABLE ROW LEVEL SECURITY;
