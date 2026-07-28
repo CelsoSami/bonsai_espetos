@@ -1,3 +1,8 @@
+/*a aba 'Mesas' precisa estar na divisão 'Principal' pois o login de garçom precisa ter acesso para fazer os pedidos dos clientes. 
+o usuário master e o gerente precisam ter um botão de abertura de caixa na aba de fluxo de caixa. 
+enquanto o caixa não for aberto, o usuário garçom consegue acessar o aplicativo, porém não consegue fazer nenhum movimento em nenhuma 
+aba, não podendo abrir comanda, fazer manutenção de mesa, ou coisas do tipo*/
+
 :root {
     --bg-primary: #0d0d0d;
     --bg-secondary: #1a1a1a;
