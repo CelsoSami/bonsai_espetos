@@ -141,6 +141,21 @@ document.addEventListener('click', e => { if (e.target.classList.contains('modal
 
 // ========== DASHBOARD ==========
 async function loadDashboard() {
+    await checkCashStatus();
+    if (!isManager() && !cashOpen) {
+        document.getElementById('statsGrid').innerHTML = `
+            <div style="grid-column:1/-1;text-align:center;padding:80px 20px;">
+                <div style="font-size:3rem;margin-bottom:16px;">🔒</div>
+                <h2 style="color:#a0a0a0;margin-bottom:8px;">Visualizacao Limitada</h2>
+                <p style="color:#666;">Aguardando a abertura do caixa por um gerente.</p>
+            </div>
+        `;
+        document.getElementById('recentOrdersBody').innerHTML = '';
+        document.getElementById('readyItemsCard').style.display = 'none';
+        document.getElementById('activeOrdersCard').style.display = 'none';
+        if (performanceChart) { performanceChart.destroy(); performanceChart = null; }
+        return;
+    }
     const { data: orders } = await sb.from('orders').select('*, tables(number)').order('created_at', { ascending: false });
     const { data: tables } = await sb.from('tables').select('*');
     const { data: products } = await sb.from('products').select('*');
@@ -537,10 +552,6 @@ async function checkCashStatus() {
         document.getElementById('btnCloseDay').textContent = 'Caixa Fechado';
     }
     document.getElementById('btnCorrection').style.display = isManager() ? '' : 'none';
-    const showPrincipal = isManager() || cashOpen;
-    document.querySelectorAll('.principal-section').forEach(el => {
-        el.style.display = showPrincipal ? '' : 'none';
-    });
 }
 
 function requireCashOpen() {
