@@ -488,33 +488,105 @@ async function adjustStock() {
 }
 
 // ========== MESAS ==========
+let currentTableFilter = 'all';
+
 async function loadTables() {
     const { data } = await sb.from('tables').select('*').order('number');
     allTables = data || [];
-    document.getElementById('tablesBody').innerHTML = allTables.map(t => `
-        <tr>
-            <td><strong>Mesa ${t.number}</strong></td>
-            <td>${t.capacity} lugares</td>
-            <td>${statusBadge(t.status)}</td>
-            <td><button class="btn btn-secondary btn-sm" onclick="toggleTableStatus('${t.id}','${t.status}')">${t.status==='available'?'Ocupar':'Liberar'}</button></td>
-        </tr>
-    `).join('') || '<tr><td colspan="4" style="text-align:center;color:#666;">Nenhuma mesa</td></tr>';
+    renderTables();
 }
 
-function openTableModal() {
-    document.getElementById('tableNumber').value = '';
-    document.getElementById('tableCapacity').value = 4;
+function renderTables() {
+    let f = allTables;
+    if (currentTableFilter === 'fisica') f = f.filter(t => t.table_type === 'fisica' || !t.table_type);
+    if (currentTableFilter === 'virtual') f = f.filter(t => t.table_type === 'virtual');
+    document.getElementById('tablesGrid').innerHTML = f.map(t => `
+        <div style="background:var(--bg-card);border:1px solid ${t.status==='occupied'?'var(--warning)':'var(--border-color)'};border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;gap:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-size:2rem;font-weight:700;color:${t.status==='occupied'?'var(--warning)':'var(--accent-white)'};">Mesa ${t.number}</div>
+                <div>${statusBadge(t.status)}</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;color:var(--text-secondary);font-size:0.9rem;">
+                <span>${t.capacity} lugares</span>
+                <span style="background:var(--bg-tertiary);padding:2px 8px;border-radius:4px;font-size:0.75rem;text-transform:uppercase;">${t.table_type||'fisica'}</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+                ${t.status==='available'?`<button class="btn btn-success btn-sm" onclick="startNewOrder('${t.id}',${t.number})" style="flex:1;">Pedido</button>`:''}
+                ${t.status==='occupied'?`<button class="btn btn-primary btn-sm" onclick="startNewOrder('${t.id}',${t.number})" style="flex:1;">+ Novo Item</button>`:''}
+                ${t.status==='occupied'?`<button class="btn btn-warning btn-sm" onclick="toggleTableStatus('${t.id}','occupied')" style="flex:1;">Liberar</button>`:''}
+            </div>
+        </div>
+    `).join('') || '<div style="text-align:center;padding:40px;color:#666;">Nenhuma mesa cadastrada</div>';
+}
+
+function filterTables(f, el) {
+    currentTableFilter = f;
+    document.querySelectorAll('#section-tables .tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    renderTables();
+}
+
+function startNewOrder(id, number) {
+    selectedTable = { id, number };
+    openNewOrderModal();
+    document.querySelectorAll('.table-btn').forEach(b => {
+        if (b.textContent.trim().startsWith(String(number))) b.classList.add('selected');
+    });
+}
+
+function openMaintenanceModal() {
+    document.getElementById('maintenanceBody').innerHTML = allTables.map(t => `
+        <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);">
+            <input type="number" class="table-num-input" value="${t.number}" style="width:60px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);text-align:center;">
+            <input type="number" class="table-cap-input" value="${t.capacity}" style="width:60px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);text-align:center;">
+            <select class="table-type-select" style="padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+                <option value="fisica" ${(t.table_type||'fisica')==='fisica'?'selected':''}>Fisica</option>
+                <option value="virtual" ${t.table_type==='virtual'?'selected':''}>Virtual</option>
+            </select>
+            <span style="color:var(--text-secondary);font-size:0.85rem;flex:1;">${statusBadge(t.status)}</span>
+            <button class="btn btn-danger btn-sm" onclick="removeTableRow(this)">X</button>
+            <input type="hidden" class="table-id-input" value="${t.id}">
+        </div>
+    `).join('');
     document.getElementById('tableModal').classList.add('active');
 }
 
-async function saveTable() {
-    await sb.from('tables').insert({
-        number: parseInt(document.getElementById('tableNumber').value),
-        capacity: parseInt(document.getElementById('tableCapacity').value),
-        status: 'available'
-    });
+function addNewTableRow() {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);';
+    div.innerHTML = `
+        <input type="number" class="table-num-input" value="${(allTables.length||0)+1}" style="width:60px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);text-align:center;">
+        <input type="number" class="table-cap-input" value="4" style="width:60px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);text-align:center;">
+        <select class="table-type-select" style="padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+            <option value="fisica">Fisica</option>
+            <option value="virtual">Virtual</option>
+        </select>
+        <span style="color:var(--text-secondary);font-size:0.85rem;flex:1;">Novo</span>
+        <button class="btn btn-danger btn-sm" onclick="removeTableRow(this)">X</button>
+        <input type="hidden" class="table-id-input" value="">
+    `;
+    document.getElementById('maintenanceBody').appendChild(div);
+}
+
+function removeTableRow(btn) {
+    btn.closest('div').remove();
+}
+
+async function saveMaintenance() {
+    const rows = document.querySelectorAll('#maintenanceBody > div');
+    for (const row of rows) {
+        const id = row.querySelector('.table-id-input').value;
+        const number = parseInt(row.querySelector('.table-num-input').value);
+        const capacity = parseInt(row.querySelector('.table-cap-input').value);
+        const table_type = row.querySelector('.table-type-select').value;
+        if (id) {
+            await sb.from('tables').update({ number, capacity, table_type }).eq('id', id);
+        } else {
+            await sb.from('tables').insert({ number, capacity, table_type, status: 'available' });
+        }
+    }
     closeModal('tableModal');
-    showToast('Mesa criada!');
+    showToast('Mesas atualizadas!');
     loadTables();
 }
 
