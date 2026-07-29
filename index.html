@@ -271,15 +271,15 @@
                     <div id="section-cashflow" class="section" style="display:none;">
                         <div class="page-header">
                             <h1>Fluxo de Caixa</h1>
-                            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                                <div id="cashRegisterStatus" style="display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:0.85rem;font-weight:600;">
-                                    <span id="cashRegisterDot" style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#666;"></span>
+                            <div class="page-header-actions">
+                                <div class="cash-status" id="cashRegisterStatus">
+                                    <span class="cash-status-dot" id="cashRegisterDot"></span>
                                     <span id="cashRegisterText">Verificando...</span>
                                 </div>
                                 <div class="btn-group">
-                                    <button class="btn btn-success btn-sm" id="btnOpenCash" onclick="openCash()" style="display:none;">Abrir Caixa</button>
-                                    <button class="btn btn-warning btn-sm" id="btnCorrection" onclick="openCashModal('correcao')" style="display:none;">Correcao</button>
-                                    <button class="btn btn-primary btn-sm" id="btnCloseDay" onclick="closeCashDay()" style="display:none;">Fechar Caixa</button>
+                                    <button class="btn btn-success" id="btnOpenCash" onclick="openCash()" style="display:none;">Abrir Caixa</button>
+                                    <button class="btn btn-warning" id="btnCorrection" onclick="openCashModal('correcao')" style="display:none;">Correcao</button>
+                                    <button class="btn btn-primary" id="btnCloseDay" onclick="closeCashDay()" style="display:none;">Fechar Caixa</button>
                                 </div>
                             </div>
                         </div>
