@@ -536,6 +536,10 @@ async function checkCashStatus() {
         document.getElementById('btnCloseDay').textContent = 'Caixa Fechado';
     }
     document.getElementById('btnCorrection').style.display = isManager() ? '' : 'none';
+    const showPrincipal = isManager() || cashOpen;
+    document.querySelectorAll('.principal-section').forEach(el => {
+        el.style.display = showPrincipal ? '' : 'none';
+    });
 }
 
 function requireCashOpen() {
