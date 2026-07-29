@@ -73,11 +73,12 @@ async function logout() {
     document.getElementById('page-auth').classList.add('active');
 }
 
-function showDashboard() {
+async function showDashboard() {
     document.getElementById('page-auth').classList.remove('active');
     document.getElementById('page-dashboard').classList.add('active');
     updateUserUI();
     updateManagerSections();
+    await checkCashStatus();
     loadDashboard();
 }
 
