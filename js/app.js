@@ -566,18 +566,13 @@ async function openCash() {
 
 async function closeCashDay() {
     if (!confirm('Fechar o caixa do dia?')) return;
-    const { data: cashflow } = await sb.from('cashflow').select('*');
-    const all = cashflow || [];
-    const ent = all.filter(c => c.type==='entrada').reduce((s,c) => s+c.amount, 0);
-    const sai = all.filter(c => c.type==='saida').reduce((s,c) => s+c.amount, 0);
-    const balance = ent - sai;
-    await sb.from('cash_sessions').update({
+    const { error } = await sb.from('cash_sessions').update({
         status: 'closed',
         closed_at: new Date().toISOString(),
         closed_by: currentUser,
-        closed_by_name: userProfile.name,
-        closing_balance: balance
+        closed_by_name: userProfile.name
     }).eq('id', cashSessionId);
+    if (error) { showToast('Erro ao fechar caixa: ' + error.message, 'error'); return; }
     cashOpen = false;
     cashSessionId = null;
     showToast('Caixa fechado!');
