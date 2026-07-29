@@ -265,6 +265,20 @@ async function openNewOrderModal() {
     if (allProducts.length === 0) {
         const { data } = await sb.from('products').select('*').eq('active', true);
         allProducts = data || [];
+        if (allProducts.length === 0) {
+            const defaults = [
+                { id:crypto.randomUUID(), name:'Espeto de Frango', price:18.90, category:'Espetos', stock:50, active:true },
+                { id:crypto.randomUUID(), name:'Espeto de Carne', price:22.90, category:'Espetos', stock:40, active:true },
+                { id:crypto.randomUUID(), name:'Espeto de Porco', price:19.90, category:'Espetos', stock:35, active:true },
+                { id:crypto.randomUUID(), name:'Coca-Cola 350ml', price:5.90, category:'Bebidas', stock:100, active:true },
+                { id:crypto.randomUUID(), name:'Cerveja Lata', price:7.90, category:'Bebidas', stock:120, active:true },
+                { id:crypto.randomUUID(), name:'Arroz', price:6.90, category:'Acompanhamentos', stock:100, active:true },
+                { id:crypto.randomUUID(), name:'Farofa', price:7.90, category:'Acompanhamentos', stock:60, active:true },
+                { id:crypto.randomUUID(), name:'Pudim', price:8.90, category:'Sobremesas', stock:30, active:true }
+            ];
+            const { data: inserted } = await sb.from('products').insert(defaults).select();
+            allProducts = inserted || defaults;
+        }
     }
     if (allTables.length === 0) {
         const { data } = await sb.from('tables').select('*').order('number');
@@ -624,6 +638,10 @@ async function checkCashStatus() {
         document.getElementById('btnCloseDay').textContent = 'Caixa Fechado';
     }
     document.getElementById('btnCorrection').style.display = isManager() ? '' : 'none';
+    const showPrincipal = isManager() || cashOpen;
+    document.querySelectorAll('.principal-section').forEach(el => {
+        el.style.display = showPrincipal ? '' : 'none';
+    });
 }
 
 function requireCashOpen() {
