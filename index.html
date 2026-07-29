@@ -562,29 +562,6 @@
         </div>
     </div>
 
-    <div class="modal-overlay" id="openCashModal">
-        <div class="modal" style="max-width:450px;">
-            <div class="modal-header">
-                <h2>Abrir Caixa</h2>
-                <button class="modal-close" onclick="closeModal('openCashModal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Saldo Inicial (R$)</label>
-                    <input type="number" id="openingBalance" step="0.01" min="0" value="0">
-                </div>
-                <div class="form-group">
-                    <label>Observacao</label>
-                    <input type="text" id="openingNotes" placeholder="Troco, observacoes...">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary btn-md" onclick="closeModal('openCashModal')">Cancelar</button>
-                <button class="btn btn-success btn-md" onclick="confirmOpenCash()">Confirmar Abertura</button>
-            </div>
-        </div>
-    </div>
-
     <!-- TOAST -->
     <div id="toast-container"></div>
 

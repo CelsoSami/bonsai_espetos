@@ -523,7 +523,6 @@ async function checkCashStatus() {
         document.getElementById('cashRegisterText').textContent = 'Caixa Aberto por ' + (data.opened_by_name || data.opened_by || 'N/A');
         document.getElementById('cashRegisterStatus').style.border = '1px solid #2ecc71';
         document.getElementById('btnOpenCash').style.display = 'none';
-        document.getElementById('btnCorrection').style.display = '';
         document.getElementById('btnCloseDay').style.display = '';
         document.getElementById('btnCloseDay').textContent = 'Fechar Caixa';
     } else {
@@ -533,10 +532,10 @@ async function checkCashStatus() {
         document.getElementById('cashRegisterText').textContent = 'Caixa Fechado';
         document.getElementById('cashRegisterStatus').style.border = '1px solid #e63946';
         document.getElementById('btnOpenCash').style.display = isManager() ? '' : 'none';
-        document.getElementById('btnCorrection').style.display = 'none';
         document.getElementById('btnCloseDay').style.display = 'none';
         document.getElementById('btnCloseDay').textContent = 'Caixa Fechado';
     }
+    document.getElementById('btnCorrection').style.display = isManager() ? '' : 'none';
 }
 
 function requireCashOpen() {
@@ -547,24 +546,15 @@ function requireCashOpen() {
     return true;
 }
 
-function openCash() {
-    document.getElementById('openingBalance').value = '0';
-    document.getElementById('openingNotes').value = '';
-    document.getElementById('openCashModal').classList.add('active');
-}
-
-async function confirmOpenCash() {
-    const balance = parseFloat(document.getElementById('openingBalance').value) || 0;
-    const notes = document.getElementById('openingNotes').value || '';
+async function openCash() {
+    if (!confirm('Abrir o caixa?')) return;
     const { error } = await sb.from('cash_sessions').insert({
         status: 'open',
         opened_by: currentUser,
         opened_by_name: userProfile.name,
-        opening_balance: balance,
-        notes
+        opening_balance: 0
     });
     if (error) { showToast('Erro ao abrir caixa: ' + error.message, 'error'); return; }
-    closeModal('openCashModal');
     showToast('Caixa aberto com sucesso!');
     loadCashflow();
 }
