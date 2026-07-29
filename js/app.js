@@ -523,7 +523,8 @@ async function checkCashStatus() {
         document.getElementById('cashRegisterText').textContent = 'Caixa Aberto por ' + (data.opened_by_name || data.opened_by || 'N/A');
         document.getElementById('cashRegisterStatus').style.border = '1px solid #2ecc71';
         document.getElementById('btnOpenCash').style.display = 'none';
-        document.getElementById('btnCashIn').style.display = '';
+        document.getElementById('btnCorrection').style.display = '';
+        document.getElementById('btnCloseDay').style.display = '';
         document.getElementById('btnCloseDay').textContent = 'Fechar Caixa';
     } else {
         cashOpen = false;
@@ -532,7 +533,8 @@ async function checkCashStatus() {
         document.getElementById('cashRegisterText').textContent = 'Caixa Fechado';
         document.getElementById('cashRegisterStatus').style.border = '1px solid #e63946';
         document.getElementById('btnOpenCash').style.display = isManager() ? '' : 'none';
-        document.getElementById('btnCashIn').style.display = 'none';
+        document.getElementById('btnCorrection').style.display = 'none';
+        document.getElementById('btnCloseDay').style.display = 'none';
         document.getElementById('btnCloseDay').textContent = 'Caixa Fechado';
     }
 }
